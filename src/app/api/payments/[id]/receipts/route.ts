@@ -12,15 +12,15 @@ import { db } from '@/lib/db'
  */
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id: paymentId } = await params
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    const paymentId = params.id
     const teamId = session.user.teamId
     if (!teamId) return NextResponse.json({ error: 'Sin equipo' }, { status: 400 })
 
@@ -174,15 +174,15 @@ export async function POST(
  */
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: paymentId } = await params
     const session = await getServerSession(authOptions)
     if (!session?.user) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    const paymentId = params.id
     const teamId = session.user.teamId
     if (!teamId) return NextResponse.json({ error: 'Sin equipo' }, { status: 400 })
 

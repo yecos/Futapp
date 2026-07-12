@@ -1,14 +1,14 @@
-import { NextRequest } from 'next/server'
 import { db } from '@/lib/db'
 import { InviteLanding } from '@/components/auth/invite-landing'
 
 export default async function InvitePage({
   params,
 }: {
-  params: { token: string }
+  params: Promise<{ token: string }>
 }) {
+  const { token } = await params
   const invite = await db.inviteToken.findUnique({
-    where: { token: params.token },
+    where: { token },
     include: { team: { select: { name: true } } },
   })
 

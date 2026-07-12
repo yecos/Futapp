@@ -18,9 +18,10 @@ const verifySchema = z.object({
  */
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id: receiptId } = await params
     const session = await getServerSession(authOptions)
     if (!session?.user) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
@@ -29,7 +30,6 @@ export async function POST(
       return NextResponse.json({ error: 'Solo el admin puede verificar' }, { status: 403 })
     }
 
-    const receiptId = params.id
     const teamId = session.user.teamId
     if (!teamId) return NextResponse.json({ error: 'Sin equipo' }, { status: 400 })
 
