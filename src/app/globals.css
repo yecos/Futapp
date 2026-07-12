@@ -43,74 +43,65 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-:root {
-  --radius: 0.75rem;
-  --background: oklch(0.99 0.005 145);
-  --foreground: oklch(0.18 0.02 150);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.18 0.02 150);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.18 0.02 150);
-  /* Verde futbolero principal */
-  --primary: oklch(0.55 0.15 150);
-  --primary-foreground: oklch(0.99 0.005 145);
-  --secondary: oklch(0.96 0.02 145);
-  --secondary-foreground: oklch(0.25 0.03 150);
-  --muted: oklch(0.96 0.01 145);
-  --muted-foreground: oklch(0.5 0.02 150);
-  --accent: oklch(0.93 0.04 145);
-  --accent-foreground: oklch(0.25 0.03 150);
-  --destructive: oklch(0.58 0.22 27);
-  --border: oklch(0.9 0.01 145);
-  --input: oklch(0.92 0.01 145);
-  --ring: oklch(0.55 0.15 150);
-  --chart-1: oklch(0.6 0.18 145);
-  --chart-2: oklch(0.65 0.16 60);
-  --chart-3: oklch(0.55 0.22 27);
-  --chart-4: oklch(0.7 0.15 240);
-  --chart-5: oklch(0.6 0.18 290);
-  --sidebar: oklch(0.985 0.005 145);
-  --sidebar-foreground: oklch(0.18 0.02 150);
-  --sidebar-primary: oklch(0.55 0.15 150);
-  --sidebar-primary-foreground: oklch(0.99 0.005 145);
-  --sidebar-accent: oklch(0.93 0.04 145);
-  --sidebar-accent-foreground: oklch(0.25 0.03 150);
-  --sidebar-border: oklch(0.9 0.01 145);
-  --sidebar-ring: oklch(0.55 0.15 150);
-}
+/* ============================================
+   FUTAPP - DESIGN SYSTEM DEPORTIVO PRO
+   Inspirado en EA Sports FC / FIFA Ultimate Team
+   ============================================ */
 
-.dark {
-  --background: oklch(0.15 0.015 150);
-  --foreground: oklch(0.97 0.005 145);
-  --card: oklch(0.2 0.02 150);
-  --card-foreground: oklch(0.97 0.005 145);
-  --popover: oklch(0.2 0.02 150);
-  --popover-foreground: oklch(0.97 0.005 145);
-  --primary: oklch(0.65 0.18 150);
-  --primary-foreground: oklch(0.15 0.015 150);
-  --secondary: oklch(0.25 0.02 150);
-  --secondary-foreground: oklch(0.97 0.005 145);
-  --muted: oklch(0.25 0.02 150);
-  --muted-foreground: oklch(0.7 0.02 150);
-  --accent: oklch(0.3 0.04 150);
-  --accent-foreground: oklch(0.97 0.005 145);
-  --destructive: oklch(0.7 0.2 27);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.65 0.18 150);
-  --chart-1: oklch(0.6 0.18 145);
-  --chart-2: oklch(0.7 0.18 60);
+:root {
+  --radius: 0.875rem;
+  
+  /* Dark mode deportivo por defecto */
+  --background: oklch(0.13 0.02 145);
+  --foreground: oklch(0.98 0.01 145);
+  --card: oklch(0.17 0.025 145);
+  --card-foreground: oklch(0.98 0.01 145);
+  --popover: oklch(0.17 0.025 145);
+  --popover-foreground: oklch(0.98 0.01 145);
+  
+  /* Verde futbolero primario (más vibrante en dark) */
+  --primary: oklch(0.72 0.19 150);
+  --primary-foreground: oklch(0.13 0.02 145);
+  
+  --secondary: oklch(0.22 0.03 145);
+  --secondary-foreground: oklch(0.98 0.01 145);
+  --muted: oklch(0.20 0.02 145);
+  --muted-foreground: oklch(0.65 0.02 145);
+  --accent: oklch(0.25 0.04 150);
+  --accent-foreground: oklch(0.98 0.01 145);
+  
+  /* Estados */
+  --destructive: oklch(0.65 0.22 27);
+  --success: oklch(0.72 0.19 150);
+  --warning: oklch(0.78 0.18 75);
+  --info: oklch(0.70 0.15 230);
+  
+  --border: oklch(0.25 0.02 145 / 60%);
+  --input: oklch(0.22 0.02 145);
+  --ring: oklch(0.72 0.19 150);
+  
+  /* Charts */
+  --chart-1: oklch(0.72 0.19 150);
+  --chart-2: oklch(0.70 0.18 75);
   --chart-3: oklch(0.65 0.22 27);
-  --chart-4: oklch(0.7 0.15 240);
-  --chart-5: oklch(0.7 0.18 290);
-  --sidebar: oklch(0.18 0.015 150);
-  --sidebar-foreground: oklch(0.97 0.005 145);
-  --sidebar-primary: oklch(0.65 0.18 150);
-  --sidebar-primary-foreground: oklch(0.15 0.015 150);
-  --sidebar-accent: oklch(0.25 0.02 150);
-  --sidebar-accent-foreground: oklch(0.97 0.005 145);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.65 0.18 150);
+  --chart-4: oklch(0.70 0.15 230);
+  --chart-5: oklch(0.70 0.18 290);
+  
+  /* Sidebar */
+  --sidebar: oklch(0.15 0.02 145);
+  --sidebar-foreground: oklch(0.98 0.01 145);
+  --sidebar-primary: oklch(0.72 0.19 150);
+  --sidebar-primary-foreground: oklch(0.13 0.02 145);
+  --sidebar-accent: oklch(0.22 0.03 145);
+  --sidebar-accent-foreground: oklch(0.98 0.01 145);
+  --sidebar-border: oklch(0.25 0.02 145 / 60%);
+  --sidebar-ring: oklch(0.72 0.19 150);
+  
+  /* Glow effects */
+  --glow-primary: 0 0 20px oklch(0.72 0.19 150 / 50%);
+  --glow-success: 0 0 20px oklch(0.72 0.19 150 / 40%);
+  --glow-warning: 0 0 20px oklch(0.78 0.18 75 / 40%);
+  --glow-danger: 0 0 20px oklch(0.65 0.22 27 / 40%);
 }
 
 @layer base {
@@ -119,46 +110,270 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "cv11", "ss01";
+    font-variation-settings: "opsz" 32;
+  }
+  
+  /* Scrollbar deportiva */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: oklch(0.15 0.02 145);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: oklch(0.30 0.03 145);
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: oklch(0.72 0.19 150);
   }
 }
 
-/* Scrollbar personalizada */
-.scroll-area::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-.scroll-area::-webkit-scrollbar-track {
-  background: transparent;
-}
-.scroll-area::-webkit-scrollbar-thumb {
-  background: oklch(0.7 0.05 150);
-  border-radius: 3px;
-}
-.scroll-area::-webkit-scrollbar-thumb:hover {
-  background: oklch(0.5 0.1 150);
-}
+/* ============================================
+   ANIMACIONES DEPORTIVAS
+   ============================================ */
 
-/* Patrón de cancha de fútbol sutil */
-.field-pattern {
-  background-image:
-    linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
-  background-size: 20px 20px;
-}
-
-/* Animaciones suaves */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
   to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s ease-out backwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 .animate-fade-in {
   animation: fadeIn 0.3s ease-out;
 }
 
-@keyframes pulseGreen {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
-  50% { box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); }
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
 }
-.pulse-green {
-  animation: pulseGreen 2s ease-in-out infinite;
+.animate-scale-in {
+  animation: scaleIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(30px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.animate-slide-in-right {
+  animation: slideInRight 0.4s ease-out backwards;
+}
+
+@keyframes countUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-count-up {
+  animation: countUp 0.6s ease-out;
+}
+
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 15px oklch(0.72 0.19 150 / 30%); }
+  50% { box-shadow: 0 0 25px oklch(0.72 0.19 150 / 60%); }
+}
+.animate-glow {
+  animation: glow 2.5s ease-in-out infinite;
+}
+
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 oklch(0.72 0.19 150 / 50%); }
+  70% { box-shadow: 0 0 0 12px oklch(0.72 0.19 150 / 0%); }
+  100% { box-shadow: 0 0 0 0 oklch(0.72 0.19 150 / 0%); }
+}
+.pulse-ring {
+  animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    oklch(0.20 0.02 145) 0%,
+    oklch(0.25 0.03 145) 50%,
+    oklch(0.20 0.02 145) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+@keyframes spin-slow {
+  to { transform: rotate(360deg); }
+}
+.animate-spin-slow {
+  animation: spin-slow 3s linear infinite;
+}
+
+@keyframes bounce-in {
+  0% { opacity: 0; transform: scale(0.3); }
+  50% { transform: scale(1.05); }
+  70% { transform: scale(0.95); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.animate-bounce-in {
+  animation: bounce-in 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
+
+/* ============================================
+   EFECTOS VISUALES DEPORTIVOS
+   ============================================ */
+
+/* Glassmorphism */
+.glass {
+  background: oklch(0.17 0.025 145 / 70%);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid oklch(0.30 0.03 145 / 30%);
+}
+
+.glass-strong {
+  background: oklch(0.13 0.02 145 / 80%);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  border: 1px solid oklch(0.30 0.03 145 / 40%);
+}
+
+/* Gradient backgrounds deportivos */
+.bg-gradient-deportivo {
+  background: linear-gradient(
+    135deg,
+    oklch(0.13 0.02 145) 0%,
+    oklch(0.16 0.03 150) 50%,
+    oklch(0.13 0.02 145) 100%
+  );
+}
+
+.bg-gradient-card {
+  background: linear-gradient(
+    135deg,
+    oklch(0.18 0.025 145) 0%,
+    oklch(0.15 0.02 145) 100%
+  );
+}
+
+.bg-gradient-primary {
+  background: linear-gradient(
+    135deg,
+    oklch(0.72 0.19 150) 0%,
+    oklch(0.62 0.20 160) 100%
+  );
+}
+
+.bg-gradient-gold {
+  background: linear-gradient(
+    135deg,
+    oklch(0.80 0.15 85) 0%,
+    oklch(0.70 0.18 75) 100%
+  );
+}
+
+/* Texto con gradiente */
+.text-gradient-primary {
+  background: linear-gradient(135deg, oklch(0.72 0.19 150), oklch(0.85 0.15 100));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+.text-gradient-gold {
+  background: linear-gradient(135deg, oklch(0.85 0.15 85), oklch(0.70 0.18 60));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* Glow effects para elementos importantes */
+.glow-primary {
+  box-shadow: 0 0 25px oklch(0.72 0.19 150 / 40%);
+}
+
+.glow-success {
+  box-shadow: 0 0 25px oklch(0.72 0.19 150 / 30%);
+}
+
+.glow-warning {
+  box-shadow: 0 0 25px oklch(0.78 0.18 75 / 30%);
+}
+
+.glow-danger {
+  box-shadow: 0 0 25px oklch(0.65 0.22 27 / 30%);
+}
+
+/* Border con glow */
+.border-glow {
+  border: 1px solid oklch(0.72 0.19 150 / 50%);
+  box-shadow: 0 0 15px oklch(0.72 0.19 150 / 20%), inset 0 0 15px oklch(0.72 0.19 150 / 5%);
+}
+
+/* Card hover effect deportivo */
+.card-hover {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 40px oklch(0 0 0 / 40%), 0 0 30px oklch(0.72 0.19 150 / 15%);
+  border-color: oklch(0.72 0.19 150 / 40%);
+}
+
+/* Patrón de cancha sutil */
+.field-pattern {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Patrón de líneas de cancha más grande */
+.field-lines {
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      oklch(0.20 0.03 145) 0px,
+      oklch(0.20 0.03 145) 40px,
+      oklch(0.18 0.025 145) 40px,
+      oklch(0.18 0.025 145) 80px
+    );
+}
+
+/* Hide scrollbar but keep functionality */
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Safe area para móvil */
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Touch target mínimo 44px */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
 }
