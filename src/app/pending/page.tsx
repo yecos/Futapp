@@ -1,42 +1,103 @@
-import { getServerSession } from 'next-auth/next'
-import { redirect } from 'next/navigation'
-import Link from 'next/link'
-import { authOptions } from '@/lib/auth'
-import { Shield, Clock, LogOut } from 'lucide-react'
-import { signOutButtonAction } from './actions'
+'use client'
 
-export default async function PendingPage() {
-  const session = await getServerSession(authOptions)
-  if (!session) redirect('/login')
+import { useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
+import { signOut } from 'next-auth/react'
+import { Shield, Clock, LogOut, ArrowRight, Plus } from 'lucide-react'
+import { useState } from 'react'
+import { toast } from 'sonner'
+
+export default function PendingPage() {
+  const router = useRouter()
+  const { data: session, update } = useSession()
+  const [leaving, setLeaving] = useState(false)
+
+  const handleLeaveTeam = async () => {
+    setLeaving(true)
+    try {
+      const res = await fetch('/api/team/leave', { method: 'POST' })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || 'Error al salir')
+      }
+      await update()
+      toast.success('Saliste del equipo')
+      router.push('/choose-team')
+      router.refresh()
+    } catch (err: any) {
+      toast.error(err.message)
+    } finally {
+      setLeaving(false)
+    }
+  }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="w-full max-w-md text-center">
-        <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-100 text-amber-600 dark:bg-amber-950 dark:text-amber-400 mb-6">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-deportivo p-4">
+      {/* Decoración */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute top-0 left-1/4 h-96 w-96 rounded-full bg-amber-500/10 blur-3xl" />
+        <div className="absolute bottom-0 right-1/4 h-96 w-96 rounded-full bg-orange-500/5 blur-3xl" />
+      </div>
+
+      <div className="relative w-full max-w-md text-center">
+        <div className="inline-flex h-16 w-16 items-center justify-center rounded-3xl bg-amber-500/20 text-amber-400 shadow-lg mb-6 animate-bounce-in">
           <Clock className="h-8 w-8" />
         </div>
         <h1 className="text-2xl font-bold mb-2">Esperando aprobación</h1>
         <p className="text-muted-foreground mb-6">
-          Tu cuenta fue creada con <strong>{session.user.email}</strong>, pero el
-          administrador del equipo aún no ha aprobado tu acceso.
+          Tu cuenta fue creada con <strong className="text-foreground">{session?.user?.email}</strong>, pero el administrador del equipo aún no ha aprobado tu acceso.
         </p>
-        <div className="bg-muted/50 rounded-lg p-4 mb-6 text-sm">
-          <p className="font-medium mb-1">¿Qué puedes hacer?</p>
-          <ul className="text-left space-y-1 text-muted-foreground">
-            <li>• Contacta al administrador del equipo</li>
-            <li>• Pídele que apruebe tu solicitud en la sección "Miembros"</li>
-            <li>• Recibirás acceso cuando sea aprobado</li>
+
+        <div className="glass rounded-2xl border border-white/10 p-4 mb-6 text-left">
+          <p className="font-medium text-sm mb-2">¿Qué puedes hacer?</p>
+          <ul className="space-y-2 text-sm text-muted-foreground">
+            <li className="flex items-start gap-2">
+              <span className="text-amber-400 mt-0.5">•</span>
+              <span>Contacta al administrador del equipo para que apruebe tu solicitud</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-amber-400 mt-0.5">•</span>
+              <span>Pídele que revise la sección "Miembros" en la app</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-amber-400 mt-0.5">•</span>
+              <span>Recibirás acceso cuando sea aprobado</span>
+            </li>
           </ul>
         </div>
-        <form action={signOutButtonAction}>
+
+        <div className="space-y-2">
           <button
-            type="submit"
-            className="inline-flex items-center justify-center rounded-md text-sm font-medium border border-input bg-background hover:bg-accent h-9 px-4"
+            onClick={handleLeaveTeam}
+            disabled={leaving}
+            className="w-full inline-flex items-center justify-center rounded-lg bg-gradient-to-r from-primary to-emerald-600 text-primary-foreground font-medium h-11 px-4 hover:opacity-90 transition-opacity disabled:opacity-50"
+          >
+            {leaving ? (
+              <>
+                <div className="h-4 w-4 mr-2 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin" />
+                Saliendo…
+              </>
+            ) : (
+              <>
+                <Plus className="h-4 w-4 mr-2" />
+                Crear mi propio equipo
+                <ArrowRight className="h-4 w-4 ml-2" />
+              </>
+            )}
+          </button>
+
+          <p className="text-xs text-muted-foreground mb-2">
+            Si no quieres esperar, puedes salir y crear tu propio equipo.
+          </p>
+
+          <button
+            onClick={() => signOut({ callbackUrl: '/login' })}
+            className="w-full inline-flex items-center justify-center rounded-lg border border-input bg-background hover:bg-accent h-10 px-4 text-sm font-medium transition-colors"
           >
             <LogOut className="h-4 w-4 mr-2" />
             Cerrar sesión
           </button>
-        </form>
+        </div>
       </div>
     </div>
   )

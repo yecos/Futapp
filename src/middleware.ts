@@ -7,8 +7,9 @@ import { NextResponse } from 'next/server'
  * Flujo:
  * 1. No logueado → /login
  * 2. Logueado sin teamId → /choose-team
- * 3. Logueado con teamId pero onboarding incompleto (admin) → /onboarding
- * 4. Logueado con membership PENDIENTE → /pending
+ * 3. Logueado con membership PENDIENTE → /pending
+ *    PERO puede ir a /choose-team para crear/unirse a otro equipo
+ * 4. Logueado con teamId pero onboarding incompleto (admin) → /onboarding
  * 5. Logueado con teamId activo → dashboard
  */
 export default withAuth(
@@ -18,19 +19,21 @@ export default withAuth(
 
     if (!token) return NextResponse.next()
 
-    // Usuario sin team membership → redirigir a /choose-team
-    // (excepto si ya está en páginas permitidas)
     const isAuthed = !!token.userId
     const hasTeam = !!token.teamId
-    const allowedPaths = ['/choose-team', '/login', '/pending', '/onboarding', '/invite']
-    const isAllowedPath = allowedPaths.some(p => path.startsWith(p)) || path.startsWith('/api/')
+    const isPending = token.membershipStatus === 'PENDIENTE'
 
-    if (isAuthed && !hasTeam && !isAllowedPath) {
+    // Páginas que el usuario SIEMPRE puede visitar (con sesión)
+    const publicPaths = ['/choose-team', '/login', '/pending', '/onboarding', '/invite', '/leave-team']
+    const isPublicPath = publicPaths.some(p => path.startsWith(p)) || path.startsWith('/api/')
+
+    // Usuario sin team → /choose-team
+    if (isAuthed && !hasTeam && !isPublicPath) {
       return NextResponse.redirect(new URL('/choose-team', req.url))
     }
 
-    // Usuario pendiente de aprobación
-    if (token.membershipStatus === 'PENDIENTE' && path !== '/pending' && !isAllowedPath) {
+    // Usuario pendiente → /pending (excepto si va a choose-team para salir)
+    if (isAuthed && isPending && path !== '/pending' && path !== '/choose-team' && path !== '/leave-team' && !path.startsWith('/api/')) {
       return NextResponse.redirect(new URL('/pending', req.url))
     }
 
@@ -39,7 +42,8 @@ export default withAuth(
       token.role === 'ADMIN' &&
       token.onboardingCompleted === false &&
       path !== '/onboarding' &&
-      !path.startsWith('/api/')
+      !path.startsWith('/api/') &&
+      !isPublicPath
     ) {
       return NextResponse.redirect(new URL('/onboarding', req.url))
     }
@@ -63,6 +67,6 @@ export default withAuth(
 
 export const config = {
   matcher: [
-    '/((?!api/auth|api/cron|api/debug|_next/static|_next/image|favicon.ico|login|invite|pending|onboarding|choose-team|public|logo.svg|manifest.json|robots.txt).*)',
+    '/((?!api/auth|api/cron|api/debug|_next/static|_next/image|favicon.ico|login|invite|pending|onboarding|choose-team|leave-team|public|logo.svg|manifest.json|robots.txt).*)',
   ],
 }
