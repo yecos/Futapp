@@ -1,7 +1,7 @@
 import { getServerSession } from 'next-auth/next'
 import { redirect } from 'next/navigation'
 import { authOptions } from '@/lib/auth'
-import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase-server'
 import { TeamSettingsView } from '@/components/admin/team-settings-view'
 
 export default async function AdminEquipoPage() {
@@ -10,7 +10,12 @@ export default async function AdminEquipoPage() {
   if (session.user.role !== 'ADMIN') redirect('/')
 
   const teamId = session.user.teamId!
-  const team = await db.team.findUnique({ where: { id: teamId } })
+  const { data: team } = await supabase
+    .from('Team')
+    .select('*')
+    .eq('id', teamId)
+    .single()
+
   if (!team) redirect('/')
 
   return (

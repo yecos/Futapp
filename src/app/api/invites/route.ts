@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth/next'
 import { z } from 'zod'
 import { randomUUID } from 'crypto'
 import { authOptions } from '@/lib/auth'
-import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase-server'
 
 const createInviteSchema = z.object({
   role: z.enum(['ENTRENADOR', 'JUGADOR', 'CUERPO_TECNICO', 'ACUDIENTE', 'SEGUIDOR']),
@@ -11,10 +11,6 @@ const createInviteSchema = z.object({
   email: z.string().email().optional(),
 })
 
-/**
- * POST /api/invites
- * Crea un nuevo token de invitación. Solo admin.
- */
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -39,16 +35,20 @@ export async function POST(req: NextRequest) {
     const expiresAt = new Date()
     expiresAt.setDate(expiresAt.getDate() + parsed.data.expiresInDays)
 
-    const invite = await db.inviteToken.create({
-      data: {
+    const { data: invite, error } = await supabase
+      .from('InviteToken')
+      .insert({
         teamId,
         createdBy: session.user.id,
         token,
         email: parsed.data.email,
         role: parsed.data.role,
-        expiresAt,
-      },
-    })
+        expiresAt: expiresAt.toISOString(),
+      })
+      .select()
+      .single()
+
+    if (error) throw error
 
     return NextResponse.json(invite, { status: 201 })
   } catch (error: any) {
@@ -60,10 +60,6 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/**
- * GET /api/invites
- * Lista invitaciones activas. Solo admin.
- */
 export async function GET() {
   try {
     const session = await getServerSession(authOptions)
@@ -75,16 +71,17 @@ export async function GET() {
     }
 
     const teamId = session.user.teamId!
-    const invites = await db.inviteToken.findMany({
-      where: {
-        teamId,
-        usedBy: null,
-        expiresAt: { gt: new Date() },
-      },
-      orderBy: { createdAt: 'desc' },
-    })
+    const { data: invites, error } = await supabase
+      .from('InviteToken')
+      .select('*')
+      .eq('teamId', teamId)
+      .is('usedBy', null)
+      .gt('expiresAt', new Date().toISOString())
+      .order('createdAt', { ascending: false })
 
-    return NextResponse.json(invites)
+    if (error) throw error
+
+    return NextResponse.json(invites || [])
   } catch (error: any) {
     console.error('[API invites GET] Error:', error)
     return NextResponse.json(

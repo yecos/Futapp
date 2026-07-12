@@ -1,7 +1,7 @@
 import { getServerSession } from 'next-auth/next'
 import { redirect } from 'next/navigation'
 import { authOptions } from '@/lib/auth'
-import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase-server'
 import { PlayerPaymentsView } from '@/components/payments/player-payments-view'
 
 export default async function PagosPage() {
@@ -10,14 +10,16 @@ export default async function PagosPage() {
   if (session.user.membershipStatus === 'PENDIENTE') redirect('/pending')
 
   const teamId = session.user.teamId!
-  const team = await db.team.findUnique({
-    where: { id: teamId },
-    select: {
-      name: true, shortName: true, bankName: true, accountType: true,
-      accountNumber: true, accountHolder: true, qrImageUrl: true,
-      paymentInstructions: true,
-    },
-  })
+  const { data: team } = await supabase
+    .from('Team')
+    .select(`
+      name, shortName, bankName, accountType,
+      accountNumber, accountHolder, qrImageUrl,
+      paymentInstructions
+    `)
+    .eq('id', teamId)
+    .single()
+
   if (!team) redirect('/login')
 
   return <PlayerPaymentsView team={team} />

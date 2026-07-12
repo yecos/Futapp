@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { z } from 'zod'
 import { authOptions } from '@/lib/auth'
-import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase-server'
 
 const createPaymentSchema = z.object({
   title: z.string().min(2).max(100),
@@ -11,16 +11,12 @@ const createPaymentSchema = z.object({
     'MENSUALIDAD', 'ARBITRAJE', 'UNIFORME', 'INSCRIPCION',
     'EVENTO', 'MULTA', 'OTRO',
   ]),
-  amount: z.number().positive().max(100000000), // max 100 millones COP
+  amount: z.number().positive().max(100000000),
   dueDate: z.string().or(z.date()),
   recurrence: z.enum(['UNICO', 'MENSUAL', 'SEMESTRAL', 'ANUAL']).default('UNICO'),
-  appliesTo: z.array(z.string()).default(['ALL']), // ['ALL'] o playerIds
+  appliesTo: z.array(z.string()).default(['ALL']),
 })
 
-/**
- * GET /api/payments
- * Lista pagos. Jugadores ven solo los que les aplican; admins ven todos.
- */
 export async function GET(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -33,72 +29,61 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url)
     const status = searchParams.get('status')
-    const onlyMine = searchParams.get('mine') === 'true'
 
-    // Si es jugador, forzar onlyMine
     const isPlayer = session.user.role === 'JUGADOR' || session.user.role === 'ACUDIENTE'
     const isAdmin = session.user.role === 'ADMIN'
 
-    // Buscar player profile del usuario actual (para filtrar)
     let currentPlayerId: string | undefined
     if (session.user.role === 'JUGADOR') {
-      const player = await db.player.findUnique({
-        where: { userId: session.user.id },
-        select: { id: true },
-      })
+      const { data: player } = await supabase
+        .from('Player')
+        .select('id')
+        .eq('userId', session.user.id)
+        .single()
       currentPlayerId = player?.id
     } else if (session.user.role === 'ACUDIENTE') {
-      const player = await db.player.findFirst({
-        where: { guardianId: session.user.id },
-        select: { id: true },
-      })
+      const { data: player } = await supabase
+        .from('Player')
+        .select('id')
+        .eq('guardianId', session.user.id)
+        .limit(1)
+        .single()
       currentPlayerId = player?.id
     }
 
-    const where: any = { teamId }
-    if (status) where.status = status
+    let query = supabase
+      .from('Payment')
+      .select(`
+        *,
+        receipts:PaymentReceipt(*)
+      `)
+      .eq('teamId', teamId)
+      .order('dueDate', { ascending: true })
 
-    let payments = await db.payment.findMany({
-      where,
-      include: {
-        receipts: {
-          where: currentPlayerId ? { playerId: currentPlayerId } : undefined,
-          select: {
-            id: true,
-            status: true,
-            receiptUrl: true,
-            uploadedAt: true,
-            reviewedAt: true,
-            rejectionReason: true,
-            amount: true,
-            reference: true,
-          },
-        },
-        _count: {
-          select: { receipts: true },
-        },
-      },
-      orderBy: { dueDate: 'asc' },
-    })
+    if (status) query = query.eq('status', status)
 
-    // Filtrar por appliesTo si no es admin
+    const { data: payments, error } = await query
+    if (error) throw error
+
+    let filtered = payments || []
+
+    // Filtrar receipts por jugador actual
     if (!isAdmin && currentPlayerId) {
-      payments = payments.filter((p) => {
-        const applies = p.appliesTo as string[]
-        if (!applies || applies.includes('ALL')) return true
-        return applies.includes(currentPlayerId!)
-      })
+      filtered = filtered
+        .filter((p: any) => {
+          const applies = p.appliesTo
+          if (!applies || applies.includes('ALL')) return true
+          return applies.includes(currentPlayerId)
+        })
+        .map((p: any) => ({
+          ...p,
+          receipts: (p.receipts || []).filter((r: any) => r.playerId === currentPlayerId),
+        }))
     } else if (!isAdmin && !currentPlayerId) {
-      // Jugador sin profile: no debería ver pagos
-      payments = []
+      filtered = []
     }
 
-    // Si onlyMine, solo pendientes/pagados/verificados del usuario
-    if (onlyMine || isPlayer) {
-      // ya filtrado por receipts arriba, solo ocultar los que ya están VERIFICADO totalmente
-    }
-
-    return NextResponse.json(payments)
+    return NextResponse.json(filtered)
   } catch (error: any) {
     console.error('[API payments GET] Error:', error)
     return NextResponse.json(
@@ -108,10 +93,6 @@ export async function GET(req: NextRequest) {
   }
 }
 
-/**
- * POST /api/payments
- * Crea un cobro. Solo admin.
- */
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -135,46 +116,59 @@ export async function POST(req: NextRequest) {
     }
     const data = parsed.data
 
-    const payment = await db.payment.create({
-      data: {
+    const { data: payment, error } = await supabase
+      .from('Payment')
+      .insert({
         teamId,
         title: data.title,
         description: data.description,
         type: data.type,
         amount: data.amount,
-        dueDate: new Date(data.dueDate),
+        dueDate: new Date(data.dueDate).toISOString(),
         recurrence: data.recurrence,
         appliesTo: data.appliesTo,
         status: 'PENDIENTE',
         createdBy: session.user.id,
-      },
-    })
+      })
+      .select()
+      .single()
+
+    if (error) throw error
 
     // Crear notificaciones para los jugadores aplicables
-    const players = data.appliesTo.includes('ALL')
-      ? await db.player.findMany({ where: { teamId }, select: { userId: true, id: true } })
-      : await db.player.findMany({
-          where: { id: { in: data.appliesTo }, teamId },
-          select: { userId: true, id: true },
-        })
+    let players: any[] = []
+    if (data.appliesTo.includes('ALL')) {
+      const { data: allPlayers } = await supabase
+        .from('Player')
+        .select('userId, id')
+        .eq('teamId', teamId)
+        .not('userId', 'is', null)
+      players = allPlayers || []
+    } else {
+      const { data: selectedPlayers } = await supabase
+        .from('Player')
+        .select('userId, id')
+        .in('id', data.appliesTo)
+        .eq('teamId', teamId)
+        .not('userId', 'is', null)
+      players = selectedPlayers || []
+    }
 
-    const notifications = players
-      .filter((p) => p.userId)
-      .map((p) => ({
-        teamId,
-        userId: p.userId!,
-        type: 'NEW_PAYMENT',
-        title: `Nuevo cobro: ${data.title}`,
-        body: `Monto: $${data.amount.toLocaleString('es-CO')} - Vence: ${new Date(data.dueDate).toLocaleDateString('es-CO')}`,
-        channel: 'IN_APP' as const,
-        status: 'ENVIADA' as const,
-        sentAt: new Date(),
-        relatedEntityType: 'PAYMENT',
-        relatedEntityId: payment.id,
-      }))
+    const notifications = players.map((p) => ({
+      teamId,
+      userId: p.userId,
+      type: 'NEW_PAYMENT',
+      title: `Nuevo cobro: ${data.title}`,
+      body: `Monto: $${data.amount.toLocaleString('es-CO')} - Vence: ${new Date(data.dueDate).toLocaleDateString('es-CO')}`,
+      channel: 'IN_APP',
+      status: 'ENVIADA',
+      sentAt: new Date().toISOString(),
+      relatedEntityType: 'PAYMENT',
+      relatedEntityId: payment.id,
+    }))
 
     if (notifications.length > 0) {
-      await db.notification.createMany({ data: notifications })
+      await supabase.from('Notification').insert(notifications)
     }
 
     return NextResponse.json(payment, { status: 201 })

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { z } from 'zod'
 import { authOptions } from '@/lib/auth'
-import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase-server'
 
 const updateMemberSchema = z.object({
   membershipId: z.string(),
@@ -10,10 +10,6 @@ const updateMemberSchema = z.object({
   newRole: z.enum(['ADMIN', 'ENTRENADOR', 'JUGADOR', 'CUERPO_TECNICO', 'ACUDIENTE', 'SEGUIDOR']).optional(),
 })
 
-/**
- * PATCH /api/members
- * Actualiza el estado o rol de un miembro. Solo admin.
- */
 export async function PATCH(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
@@ -35,36 +31,38 @@ export async function PATCH(req: NextRequest) {
     }
     const { membershipId, action, newRole } = parsed.data
 
-    // Verificar que el membership pertenece al equipo del admin
-    const membership = await db.teamMembership.findFirst({
-      where: { id: membershipId, teamId },
-    })
+    const { data: membership } = await supabase
+      .from('TeamMembership')
+      .select('id')
+      .eq('id', membershipId)
+      .eq('teamId', teamId)
+      .single()
+
     if (!membership) {
       return NextResponse.json({ error: 'Membresía no encontrada' }, { status: 404 })
     }
 
-    let updated
+    const now = new Date().toISOString()
+    let update: any = {}
+
     if (action === 'approve') {
-      updated = await db.teamMembership.update({
-        where: { id: membershipId },
-        data: { status: 'ACTIVO', joinedAt: new Date(), acceptedAt: new Date() },
-      })
+      update = { status: 'ACTIVO', joinedAt: now, acceptedAt: now }
     } else if (action === 'reject') {
-      updated = await db.teamMembership.update({
-        where: { id: membershipId },
-        data: { status: 'BLOQUEADO' },
-      })
+      update = { status: 'BLOQUEADO' }
     } else if (action === 'changeRole' && newRole) {
-      updated = await db.teamMembership.update({
-        where: { id: membershipId },
-        data: { role: newRole },
-      })
+      update = { role: newRole }
     } else if (action === 'block') {
-      updated = await db.teamMembership.update({
-        where: { id: membershipId },
-        data: { status: 'BLOQUEADO', leftAt: new Date() },
-      })
+      update = { status: 'BLOQUEADO', leftAt: now }
     }
+
+    const { data: updated, error } = await supabase
+      .from('TeamMembership')
+      .update(update)
+      .eq('id', membershipId)
+      .select()
+      .single()
+
+    if (error) throw error
 
     return NextResponse.json(updated)
   } catch (error: any) {

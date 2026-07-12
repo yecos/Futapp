@@ -1,19 +1,21 @@
 import type { NextAuthOptions } from 'next-auth'
 import GoogleProvider from 'next-auth/providers/google'
-import { PrismaAdapter } from '@auth/prisma-adapter'
-import { db } from '@/lib/db'
+import { SupabaseRestAdapter } from '@/lib/supabase-auth-adapter'
 
 /**
- * Configuración de NextAuth con Google + Prisma Adapter.
+ * Configuración de NextAuth con Google + Supabase REST API Adapter.
+ *
+ * IMPORTANTE: Usamos un adapter custom que usa REST API en lugar de
+ * PostgreSQL directo porque Vercel no puede conectarse al pooler de
+ * Supabase desde serverless functions en proyectos nuevos.
  *
  * Decisiones de diseño:
  * - JWT strategy (no DB sessions) → permite middleware en Edge runtime
- * - El rol del usuario se guarda en TeamMembership, no en User
- * - En cada login, cargamos el membership activo y lo metemos al token
+ * - El rol del usuario se guarda en TeamMembership
  * - El primer usuario que se registra se convierte en ADMIN del primer Team
  */
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(db),
+  adapter: SupabaseRestAdapter(),
   session: { strategy: 'jwt' },
   providers: [
     GoogleProvider({
@@ -26,38 +28,72 @@ export const authOptions: NextAuthOptions = {
     error: '/login',
   },
   callbacks: {
-    async jwt({ token, user, account }) {
+    async jwt({ token, user }) {
       // Solo en el primer login (user viene del adapter)
       if (user) {
         token.userId = user.id
 
-        // Si viene de un invite link, canjear el token
+        // Verificar si viene de un invite link
         const callbackUrl = token.callbackUrl as string | undefined
         const inviteMatch = callbackUrl?.match(/\/invite\/([a-f0-9-]+)/)
         if (inviteMatch) {
           const inviteToken = inviteMatch[1]
-          const invite = await db.inviteToken.findUnique({
-            where: { token: inviteToken },
-          })
-          if (invite && !invite.usedBy && invite.expiresAt > new Date()) {
+          const { supabase } = await import('@/lib/supabase-server')
+
+          const { data: invite } = await supabase
+            .from('InviteToken')
+            .select('*')
+            .eq('token', inviteToken)
+            .is('usedBy', null)
+            .gt('expiresAt', new Date().toISOString())
+            .single()
+
+          if (invite) {
             // Crear membership ACTIVO con el rol del invite
-            await db.teamMembership.upsert({
-              where: { userId_teamId: { userId: user.id, teamId: invite.teamId } },
-              update: { role: invite.role, status: 'ACTIVO', joinedAt: new Date() },
-              create: {
-                userId: user.id,
-                teamId: invite.teamId,
-                role: invite.role,
-                status: 'ACTIVO',
-                joinedAt: new Date(),
-              },
-            })
+            const { data: existing } = await supabase
+              .from('TeamMembership')
+              .select('id')
+              .eq('userId', user.id)
+              .eq('teamId', invite.teamId)
+              .single()
+
+            if (existing) {
+              await supabase
+                .from('TeamMembership')
+                .update({
+                  role: invite.role,
+                  status: 'ACTIVO',
+                  joinedAt: new Date().toISOString(),
+                })
+                .eq('id', existing.id)
+            } else {
+              await supabase
+                .from('TeamMembership')
+                .insert({
+                  userId: user.id,
+                  teamId: invite.teamId,
+                  role: invite.role,
+                  status: 'ACTIVO',
+                  joinedAt: new Date().toISOString(),
+                })
+            }
+
             // Marcar invite como usado
-            await db.inviteToken.update({
-              where: { id: invite.id },
-              data: { usedBy: user.id, usedAt: new Date() },
-            })
-            const team = await db.team.findUnique({ where: { id: invite.teamId } })
+            await supabase
+              .from('InviteToken')
+              .update({
+                usedBy: user.id,
+                usedAt: new Date().toISOString(),
+              })
+              .eq('id', invite.id)
+
+            // Obtener team
+            const { data: team } = await supabase
+              .from('Team')
+              .select('onboardingCompleted')
+              .eq('id', invite.teamId)
+              .single()
+
             token.role = invite.role
             token.teamId = invite.teamId
             token.membershipStatus = 'ACTIVO'
@@ -67,65 +103,91 @@ export const authOptions: NextAuthOptions = {
         }
 
         // Cargar o crear membership
-        const membership = await db.teamMembership.findFirst({
-          where: { userId: user.id, status: 'ACTIVO' },
-          include: { team: true },
-        })
+        const { supabase } = await import('@/lib/supabase-server')
+
+        const { data: membership } = await supabase
+          .from('TeamMembership')
+          .select('*, team!inner(*)')
+          .eq('userId', user.id)
+          .eq('status', 'ACTIVO')
+          .single()
 
         if (membership) {
           token.role = membership.role
           token.teamId = membership.teamId
           token.membershipStatus = membership.status
-          token.onboardingCompleted = membership.team.onboardingCompleted
+          token.onboardingCompleted = (membership.team as any).onboardingCompleted
         } else {
           // Verificar si es el primer usuario → admin automático
-          const userCount = await db.user.count()
-          if (userCount === 1) {
+          const { count } = await supabase
+            .from('User')
+            .select('*', { count: 'exact', head: true })
+
+          if (count === 1) {
             // Primer usuario: crear Team por defecto y membership ADMIN
-            const team = await db.team.create({
-              data: {
+            const { data: team } = await supabase
+              .from('Team')
+              .insert({
                 name: 'Mi Equipo',
                 shortName: 'MEQ',
                 category: 'Por configurar',
                 coachName: user.name || 'Entrenador',
                 foundedYear: new Date().getFullYear(),
                 onboardingCompleted: false,
-              },
-            })
-            await db.teamMembership.create({
-              data: {
+                isActive: true,
+              })
+              .select()
+              .single()
+
+            await supabase
+              .from('TeamMembership')
+              .insert({
                 userId: user.id,
                 teamId: team.id,
                 role: 'ADMIN',
                 status: 'ACTIVO',
-                joinedAt: new Date(),
-              },
-            })
+                joinedAt: new Date().toISOString(),
+              })
+
             token.role = 'ADMIN'
             token.teamId = team.id
             token.membershipStatus = 'ACTIVO'
             token.onboardingCompleted = false
           } else {
             // Usuario sin invitación: crear membership PENDIENTE
-            const firstTeam = await db.team.findFirst({
-              where: { isActive: true },
-            })
+            const { data: firstTeam } = await supabase
+              .from('Team')
+              .select('id, onboardingCompleted')
+              .eq('isActive', true)
+              .order('createdAt', { ascending: true })
+              .limit(1)
+              .single()
+
             if (firstTeam) {
-              await db.teamMembership.upsert({
-                where: { userId_teamId: { userId: user.id, teamId: firstTeam.id } },
-                update: {},
-                create: {
-                  userId: user.id,
-                  teamId: firstTeam.id,
-                  role: 'SEGUIDOR',
-                  status: 'PENDIENTE',
-                },
-              })
+              // Verificar si ya existe membership
+              const { data: existing } = await supabase
+                .from('TeamMembership')
+                .select('id, status, role')
+                .eq('userId', user.id)
+                .eq('teamId', firstTeam.id)
+                .single()
+
+              if (!existing) {
+                await supabase
+                  .from('TeamMembership')
+                  .insert({
+                    userId: user.id,
+                    teamId: firstTeam.id,
+                    role: 'SEGUIDOR',
+                    status: 'PENDIENTE',
+                  })
+              }
+
+              token.role = existing?.role || 'SEGUIDOR'
+              token.teamId = firstTeam.id
+              token.membershipStatus = existing?.status || 'PENDIENTE'
+              token.onboardingCompleted = firstTeam.onboardingCompleted
             }
-            token.role = 'SEGUIDOR'
-            token.teamId = firstTeam?.id
-            token.membershipStatus = 'PENDIENTE'
-            token.onboardingCompleted = firstTeam?.onboardingCompleted ?? false
           }
         }
       }
@@ -143,7 +205,6 @@ export const authOptions: NextAuthOptions = {
     },
   },
   events: {
-    // Log de errores de sign-in para debugging
     async signIn(message) {
       console.log('[Auth] Sign in:', message.user.email)
     },

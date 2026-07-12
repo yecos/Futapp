@@ -1,7 +1,7 @@
 import { getServerSession } from 'next-auth/next'
 import { redirect } from 'next/navigation'
 import { authOptions } from '@/lib/auth'
-import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase-server'
 import { AdminPaymentsView } from '@/components/payments/admin-payments-view'
 
 export default async function AdminPagosPage() {
@@ -11,48 +11,46 @@ export default async function AdminPagosPage() {
 
   const teamId = session.user.teamId!
 
-  // Cargar pagos con receipts
-  const payments = await db.payment.findMany({
-    where: { teamId },
-    include: {
-      receipts: {
-        include: {
-          player: { select: { id: true, fullName: true, jerseyNumber: true } },
-        },
-      },
-    },
-    orderBy: { dueDate: 'desc' },
-  })
+  const { data: payments } = await supabase
+    .from('Payment')
+    .select(`
+      *,
+      receipts:PaymentReceipt(
+        *,
+        player:Player(id, fullName, jerseyNumber)
+      )
+    `)
+    .eq('teamId', teamId)
+    .order('dueDate', { ascending: false })
 
-  const players = await db.player.findMany({
-    where: { teamId },
-    select: { id: true, fullName: true, jerseyNumber: true, primaryPosition: true },
-    orderBy: { jerseyNumber: 'asc' },
-  })
+  const { data: players } = await supabase
+    .from('Player')
+    .select('id, fullName, jerseyNumber, primaryPosition')
+    .eq('teamId', teamId)
+    .order('jerseyNumber', { ascending: true })
 
-  // Calcular métricas
-  const totalRecaudado = payments
-    .flatMap((p) => p.receipts)
-    .filter((r) => r.status === 'VERIFICADO')
-    .reduce((sum, r) => sum + Number(r.amount || 0), 0)
-
-  const pendientesVerificacion = payments
-    .flatMap((p) => p.receipts)
-    .filter((r) => r.status === 'PAGADO').length
-
-  const paymentsSerialized = payments.map((p) => ({
+  const paymentsList = (payments || []).map((p: any) => ({
     ...p,
     amount: Number(p.amount),
-    receipts: p.receipts.map((r) => ({
+    receipts: (p.receipts || []).map((r: any) => ({
       ...r,
       amount: r.amount ? Number(r.amount) : null,
     })),
   }))
 
+  const totalRecaudado = paymentsList
+    .flatMap((p) => p.receipts)
+    .filter((r) => r.status === 'VERIFICADO')
+    .reduce((sum, r) => sum + (r.amount || 0), 0)
+
+  const pendientesVerificacion = paymentsList
+    .flatMap((p) => p.receipts)
+    .filter((r) => r.status === 'PAGADO').length
+
   return (
     <AdminPaymentsView
-      payments={paymentsSerialized}
-      players={players}
+      payments={paymentsList}
+      players={players || []}
       totalRecaudado={totalRecaudado}
       pendientesVerificacion={pendientesVerificacion}
     />

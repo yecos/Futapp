@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { z } from 'zod'
 import { authOptions } from '@/lib/auth'
-import { db } from '@/lib/db'
+import { supabase } from '@/lib/supabase-server'
 
 const onboardingSchema = z.object({
   name: z.string().min(2).max(100),
@@ -43,10 +43,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Sin equipo asignado' }, { status: 400 })
     }
 
-    // Actualizar el team
-    await db.team.update({
-      where: { id: teamId },
-      data: {
+    const { error } = await supabase
+      .from('Team')
+      .update({
         name: data.name,
         shortName: data.shortName.toUpperCase(),
         category: data.category,
@@ -59,8 +58,11 @@ export async function POST(req: NextRequest) {
         accountHolder: data.accountHolder,
         paymentInstructions: data.paymentInstructions,
         onboardingCompleted: true,
-      },
-    })
+        updatedAt: new Date().toISOString(),
+      })
+      .eq('id', teamId)
+
+    if (error) throw error
 
     return NextResponse.json({ success: true })
   } catch (error: any) {
@@ -84,30 +86,18 @@ export async function GET() {
       return NextResponse.json({ error: 'Sin equipo asignado' }, { status: 400 })
     }
 
-    const team = await db.team.findUnique({
-      where: { id: teamId },
-      select: {
-        id: true,
-        name: true,
-        shortName: true,
-        category: true,
-        coachName: true,
-        primaryColor: true,
-        secondaryColor: true,
-        foundedYear: true,
-        logoUrl: true,
-        description: true,
-        bankName: true,
-        accountType: true,
-        accountNumber: true,
-        accountHolder: true,
-        qrImageUrl: true,
-        paymentInstructions: true,
-        onboardingCompleted: true,
-      },
-    })
+    const { data: team, error } = await supabase
+      .from('Team')
+      .select(`
+        id, name, shortName, category, coachName, primaryColor, secondaryColor,
+        foundedYear, logoUrl, description,
+        bankName, accountType, accountNumber, accountHolder, qrImageUrl,
+        paymentInstructions, onboardingCompleted
+      `)
+      .eq('id', teamId)
+      .single()
 
-    if (!team) {
+    if (error) {
       return NextResponse.json({ error: 'Equipo no encontrado' }, { status: 404 })
     }
 
@@ -137,25 +127,28 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Sin equipo asignado' }, { status: 400 })
     }
 
-    // Update parcial
     const allowedFields = [
       'name', 'shortName', 'category', 'coachName', 'primaryColor', 'secondaryColor',
       'foundedYear', 'logoUrl', 'description',
       'bankName', 'accountType', 'accountNumber', 'accountHolder', 'qrImageUrl',
       'paymentInstructions',
     ]
-    const updateData: any = {}
+    const updateData: any = { updatedAt: new Date().toISOString() }
     for (const field of allowedFields) {
       if (field in body) updateData[field] = body[field]
     }
     if (updateData.shortName) updateData.shortName = updateData.shortName.toUpperCase()
 
-    const updated = await db.team.update({
-      where: { id: teamId },
-      data: updateData,
-    })
+    const { data, error } = await supabase
+      .from('Team')
+      .update(updateData)
+      .eq('id', teamId)
+      .select()
+      .single()
 
-    return NextResponse.json(updated)
+    if (error) throw error
+
+    return NextResponse.json(data)
   } catch (error: any) {
     console.error('[API team PATCH] Error:', error)
     return NextResponse.json(
