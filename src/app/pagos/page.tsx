@@ -7,9 +7,10 @@ import { PlayerPaymentsView } from '@/components/payments/player-payments-view'
 export default async function PagosPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
+  if (!session.user.teamId) redirect('/choose-team')
   if (session.user.membershipStatus === 'PENDIENTE') redirect('/pending')
 
-  const teamId = session.user.teamId!
+  const teamId = session.user.teamId
   const { data: team } = await supabase
     .from('Team')
     .select(`

@@ -7,9 +7,10 @@ import { MembersManagerView } from '@/components/admin/members-manager-view'
 export default async function AdminMiembrosPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
+  if (!session.user.teamId) redirect('/choose-team')
   if (session.user.role !== 'ADMIN') redirect('/')
 
-  const teamId = session.user.teamId!
+  const teamId = session.user.teamId
 
   const { data: memberships } = await supabase
     .from('TeamMembership')

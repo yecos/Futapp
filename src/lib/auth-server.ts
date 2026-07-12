@@ -1,16 +1,17 @@
 import { getServerSession } from 'next-auth/next'
 import { redirect } from 'next/navigation'
 import { authOptions } from './auth'
-import type { Role } from '@prisma/client'
+
+export type Role = 'ADMIN' | 'ENTRENADOR' | 'JUGADOR' | 'CUERPO_TECNICO' | 'ACUDIENTE' | 'SEGUIDOR'
 
 export interface SessionUser {
   id: string
   email: string
   name?: string | null
   image?: string | null
-  role: Role
-  teamId: string
-  membershipStatus: 'ACTIVO' | 'PENDIENTE' | 'RETIRADO' | 'BLOQUEADO'
+  role: Role | null
+  teamId: string | null
+  membershipStatus: string | null
   onboardingCompleted: boolean
 }
 
@@ -35,18 +36,29 @@ export async function requireSession(): Promise<SessionUser> {
 }
 
 /**
+ * Requiere que el usuario tenga un equipo asignado.
+ * Si no, redirige a /choose-team.
+ */
+export async function requireTeam(): Promise<SessionUser> {
+  const user = await requireSession()
+  if (!user.teamId) {
+    redirect('/choose-team')
+  }
+  return user
+}
+
+/**
  * Requiere que el usuario tenga uno de los roles especificados.
  * Si no, redirige a / (dashboard).
  */
 export async function requireRole(...roles: Role[]): Promise<SessionUser> {
-  const user = await requireSession()
+  const user = await requireTeam()
 
-  // Si está pendiente, redirigir a página de espera
   if (user.membershipStatus === 'PENDIENTE') {
     redirect('/pending')
   }
 
-  if (!roles.includes(user.role)) {
+  if (!user.role || !roles.includes(user.role)) {
     redirect('/')
   }
 
@@ -62,11 +74,11 @@ export async function requireAdmin(): Promise<SessionUser> {
 
 /**
  * Verifica si el usuario puede acceder a un recurso.
- * Útil para checks en Server Actions sin redirigir.
  */
 export async function canAccess(allowedRoles: Role[]): Promise<boolean> {
   const user = await getSession()
-  if (!user) return false
+  if (!user || !user.teamId) return false
   if (user.membershipStatus !== 'ACTIVO') return false
+  if (!user.role) return false
   return allowedRoles.includes(user.role)
 }

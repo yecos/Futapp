@@ -7,9 +7,10 @@ import { AdminPaymentsView } from '@/components/payments/admin-payments-view'
 export default async function AdminPagosPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
+  if (!session.user.teamId) redirect('/choose-team')
   if (session.user.role !== 'ADMIN') redirect('/')
 
-  const teamId = session.user.teamId!
+  const teamId = session.user.teamId
 
   const { data: payments } = await supabase
     .from('Payment')
