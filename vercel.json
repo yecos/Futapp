@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/remind-payments",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/generate-recurring",
+      "schedule": "0 5 1 * *"
+    }
+  ]
+}

@@ -1,32 +1,575 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// Futapp - Schema Prisma para PostgreSQL (Supabase)
+// Gestión deportiva multi-usuario con roles, pagos y eventos
 
 generator client {
   provider = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
+
+// =====================================================
+// ENUMS
+// =====================================================
+
+enum Role {
+  ADMIN
+  ENTRENADOR
+  JUGADOR
+  CUERPO_TECNICO
+  ACUDIENTE
+  SEGUIDOR
+}
+
+enum EventType {
+  ENTRENAMIENTO
+  PARTIDO
+  TORNEO
+  REUNION
+  EVENTO
+}
+
+enum EventStatus {
+  PROGRAMADO
+  COMPLETADO
+  CANCELADO
+}
+
+enum AttendanceStatus {
+  ASISTIRE
+  NO_ASISTIRE
+  TAL_VEZ
+}
+
+enum CallupStatus {
+  TITULAR
+  SUPLENTE
+  NO_CONVOCADO
+}
+
+enum PlayerStatus {
+  DISPONIBLE
+  LESIONADO
+  SUSPENDIDO
+  AUSENTE
+}
+
+enum Position {
+  PORTERO
+  DEFENSA
+  MEDIOCAMPISTA
+  DELANTERO
+}
+
+enum Foot {
+  DIESTRO
+  ZURDO
+  AMBIDIESTRO
+}
+
+enum AnnouncementCategory {
+  GENERAL
+  CONVOCATORIA
+  EVENTO
+  URGENTE
+  PAGO
+}
+
+enum PaymentType {
+  MENSUALIDAD
+  ARBITRAJE
+  UNIFORME
+  INSCRIPCION
+  EVENTO
+  MULTA
+  OTRO
+}
+
+enum PaymentStatus {
+  PENDIENTE
+  PAGADO
+  VERIFICADO
+  RECHAZADO
+  VENCIDO
+}
+
+enum PaymentRecurrence {
+  UNICO
+  MENSUAL
+  SEMESTRAL
+  ANUAL
+}
+
+enum MembershipStatus {
+  ACTIVO
+  PENDIENTE
+  RETIRADO
+  BLOQUEADO
+}
+
+enum NotificationChannel {
+  EMAIL
+  PUSH
+  IN_APP
+}
+
+enum NotificationStatus {
+  PENDIENTE
+  ENVIADA
+  FALLIDA
+  LEIDA
+}
+
+// =====================================================
+// NEXTAUTH ADAPTER MODELS (Account, Session, VerificationToken)
+// =====================================================
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  image         String?
+  emailVerified DateTime?
+  phoneNumber   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // NextAuth relations
+  accounts Account[]
+  sessions Session[]
+
+  // App relations
+  memberships       TeamMembership[]
+  playerProfile     Player?
+  guardianOf        Player[]         @relation("PlayerGuardian")
+  announcements     Announcement[]
+  paymentsCreated   Payment[]
+  paymentsVerified  Payment[]        @relation("PaymentVerifier")
+  receiptsUploaded  PaymentReceipt[]
+  notifications     Notification[]
+  invitesCreated    InviteToken[]
+  inviteUsed        InviteToken?     @relation("InviteTokenUsed")
+
+  @@index([email])
 }
 
-model Post {
-  id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// =====================================================
+// TEAM & MEMBERSHIP
+// =====================================================
+
+model Team {
+  id              String   @id @default(cuid())
+  name            String
+  shortName       String
+  category        String
+  coachName       String
+  primaryColor    String   @default("#16a34a")
+  secondaryColor  String?
+  foundedYear     Int
+  logoUrl         String?
+  description     String?
+
+  // Datos bancarios para QR Bancolombia
+  bankName            String  @default("Bancolombia")
+  accountType         String  @default("Ahorros")
+  accountNumber       String?
+  accountHolder       String?
+  qrImageUrl          String?
+  paymentInstructions String?
+
+  onboardingCompleted Boolean @default(false)
+  isActive            Boolean @default(true)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  memberships   TeamMembership[]
+  events        Event[]
+  players       Player[]
+  announcements Announcement[]
+  payments      Payment[]
+  standings     Standing[]
+
+  @@index([isActive])
+}
+
+model TeamMembership {
+  id        String   @id @default(cuid())
+  userId    String
+  teamId    String
+  role      Role
+  status    MembershipStatus @default(PENDIENTE)
+  invitedBy String?
+  invitedAt DateTime?
+  acceptedAt DateTime?
+  joinedAt  DateTime?
+  leftAt    DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, teamId])
+  @@index([teamId, role])
+  @@index([userId])
+}
+
+// =====================================================
+// PLAYERS
+// =====================================================
+
+model Player {
+  id              String   @id @default(cuid())
+  teamId          String
+  userId          String?  @unique  // vinculado si el jugador tiene cuenta
+  guardianId      String?  // si es categoría infantil, acudiente User
+
+  firstName       String
+  lastName        String
+  fullName        String
+  jerseyNumber    Int
+  primaryPosition Position
+  secondaryPosition Position?
+  age             Int
+  birthDate       DateTime?
+  dominantFoot    Foot     @default(DIESTRO)
+  height          Int?
+  weight          Int?
+  phone           String?
+  emergencyContact String?
+  photoUrl        String?
+  status          PlayerStatus @default(DISPONIBLE)
+
+  // Stats cacheadas (se actualizan al guardar MatchStat)
+  matchesPlayed    Int @default(0)
+  goals            Int @default(0)
+  assists          Int @default(0)
+  yellowCards      Int @default(0)
+  redCards         Int @default(0)
+  trainingsAttended Int @default(0)
+  trainingsTotal   Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  team      Team       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user      User?      @relation(fields: [userId], references: [id])
+  guardian  User?      @relation("PlayerGuardian", fields: [guardianId], references: [id])
+  attendances Attendance[]
+  callups    Callup[]
+  matchStats MatchStat[]
+  receipts   PaymentReceipt[]
+
+  @@unique([teamId, jerseyNumber])
+  @@index([teamId, status])
+  @@index([userId])
+  @@index([guardianId])
+}
+
+// =====================================================
+// EVENTS, ATTENDANCE, CALLUPS, MATCH STATS
+// =====================================================
+
+model Event {
+  id          String   @id @default(cuid())
+  teamId      String
+  type        EventType
+  title       String
+  description String?
+  date        DateTime
+  endDate     DateTime?
+  location    String
+  opponent    String?
+  isHome      Boolean?
+  status      EventStatus @default(PROGRAMADO)
+  homeScore   Int?
+  awayScore   Int?
+  formation   String?
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  team        Team         @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  attendances Attendance[]
+  callups     Callup[]
+  matchStats  MatchStat[]
+
+  @@index([teamId, date])
+  @@index([teamId, status, date])
+}
+
+model Attendance {
+  id        String           @id @default(cuid())
+  eventId   String
+  playerId  String
+  status    AttendanceStatus?
+  note      String?
+  updatedAt DateTime         @updatedAt
+  updatedBy String
+
+  event  Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, playerId])
+  @@index([eventId, status])
+}
+
+model Callup {
+  id            String       @id @default(cuid())
+  eventId       String
+  playerId      String
+  teamId        String
+  status        CallupStatus
+  positionLabel String?  // POR, LI, DFC, etc.
+  fieldPosition String?  // "x,y" coords
+  isCaptain     Boolean  @default(false)
+  order         Int?
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  event  Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, playerId])
+  @@index([eventId, status])
+}
+
+model MatchStat {
+  id             String   @id @default(cuid())
+  eventId        String
+  playerId       String
+  teamId         String
+  goals          Int      @default(0)
+  assists        Int      @default(0)
+  minutesPlayed  Int      @default(0)
+  yellowCards    Int      @default(0)
+  redCards       Int      @default(0)
+  saves          Int      @default(0)
+  shots          Int      @default(0)
+  recoveries     Int      @default(0)
+  isMotm         Boolean  @default(false)
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  event  Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, playerId])
+  @@index([playerId, eventId])
+  @@index([eventId, isMotm])
+}
+
+// =====================================================
+// ANNOUNCEMENTS
+// =====================================================
+
+model Announcement {
+  id          String              @id @default(cuid())
+  teamId      String
+  title       String
+  content     String
+  category    AnnouncementCategory @default(GENERAL)
+  authorId    String
+  authorRole  Role
+  pinned      Boolean             @default(false)
+  publishedAt DateTime
+  expiresAt   DateTime?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  team   Team              @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  author User              @relation(fields: [authorId], references: [id])
+  reads  AnnouncementRead[]
+
+  @@index([teamId, publishedAt])
+  @@index([teamId, pinned, publishedAt])
+}
+
+model AnnouncementRead {
+  id              String   @id @default(cuid())
+  announcementId  String
+  userId          String
+  readAt          DateTime @default(now())
+
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+
+  @@unique([announcementId, userId])
+  @@index([userId])
+}
+
+// =====================================================
+// STANDINGS (TABLA DE POSICIONES)
+// =====================================================
+
+model Standing {
+  id            String   @id @default(cuid())
+  teamId        String
+  tournamentName String
+  teamName      String
+  isOurTeam     Boolean  @default(false)
+  played        Int      @default(0)
+  won           Int      @default(0)
+  drawn         Int      @default(0)
+  lost          Int      @default(0)
+  goalsFor      Int      @default(0)
+  goalsAgainst  Int      @default(0)
+  points        Int      @default(0)
+  position      Int?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, tournamentName, teamName])
+  @@index([teamId, tournamentName, points])
+}
+
+// =====================================================
+// PAYMENTS (COBROS + COMPROBANTES)
+// =====================================================
+
+model Payment {
+  id          String           @id @default(cuid())
+  teamId      String
+  title       String
+  description String?
+  type        PaymentType
+  amount      Decimal          @db.Decimal(12, 2)
+  currency    String           @default("COP")
+  dueDate     DateTime
+  recurrence  PaymentRecurrence @default(UNICO)
+  appliesTo   Json?            // ["ALL"] o ["playerId1", "playerId2"]
+  status      PaymentStatus    @default(PENDIENTE)
+  parentPaymentId String?      // para recurrentes generados
+  createdBy   String
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  verifiedBy  String?
+  verifiedAt  DateTime?
+
+  team     Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  creator  User             @relation(fields: [createdBy], references: [id])
+  verifier User?            @relation("PaymentVerifier", fields: [verifiedBy], references: [id])
+  receipts PaymentReceipt[]
+
+  @@index([teamId, status, dueDate])
+  @@index([teamId, type])
+  @@index([parentPaymentId])
+}
+
+model PaymentReceipt {
+  id              String        @id @default(cuid())
+  paymentId       String
+  teamId          String
+  playerId        String
+  uploadedBy      String
+  receiptUrl      String        // path en Supabase Storage
+  amount          Decimal?      @db.Decimal(12, 2)
+  reference       String?
+  notes           String?
+  status          PaymentStatus @default(PAGADO)
+  uploadedAt      DateTime      @default(now())
+  reviewedAt      DateTime?
+  reviewedBy      String?
+  rejectionReason String?
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  player  Player  @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  uploader User   @relation(fields: [uploadedBy], references: [id])
+
+  @@index([paymentId, status])
+  @@index([teamId, status])
+  @@index([playerId])
+}
+
+// =====================================================
+// NOTIFICATIONS
+// =====================================================
+
+model Notification {
+  id               String              @id @default(cuid())
+  teamId           String
+  userId           String?
+  type             String              // PAYMENT_REMINDER, ANNOUNCEMENT, CALLUP, etc.
+  title            String
+  body             String
+  data             Json?
+  channel          NotificationChannel @default(IN_APP)
+  status           NotificationStatus  @default(PENDIENTE)
+  sentAt           DateTime?
+  readAt           DateTime?
+  relatedEntityType String?
+  relatedEntityId  String?
+  createdAt        DateTime            @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([teamId, type, status])
+}
+
+// =====================================================
+// INVITE TOKENS
+// =====================================================
+
+model InviteToken {
+  id        String   @id @default(cuid())
+  teamId    String
+  createdBy String
+  token     String   @unique
+  email     String?
+  role      Role
+  expiresAt DateTime
+  usedBy    String?  @unique
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  creator User  @relation(fields: [createdBy], references: [id])
+  used   User?  @relation("InviteTokenUsed", fields: [usedBy], references: [id])
+
+  @@index([teamId, expiresAt])
 }

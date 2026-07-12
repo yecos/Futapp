@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
+import { Providers } from "@/components/providers/providers";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -20,15 +21,10 @@ export const metadata: Metadata = {
     template: "%s · Futapp",
   },
   description:
-    "Centro de organización, comunicación y seguimiento deportivo para equipos de fútbol. Calendario, convocatorias, plantilla, resultados y avisos.",
+    "Centro de organización, comunicación y seguimiento deportivo para equipos de fútbol.",
   keywords: [
-    "fútbol",
-    "gestión deportiva",
-    "equipo",
-    "convocatorias",
-    "alineación",
-    "plantilla",
-    "futapp",
+    "fútbol", "gestión deportiva", "equipo", "convocatorias",
+    "alineación", "plantilla", "futapp", "pagos", "QR Bancolombia",
   ],
   authors: [{ name: "yecos" }],
   creator: "yecos",
@@ -40,16 +36,14 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "Futapp · Gestión Deportiva",
-    description:
-      "Centro de organización, comunicación y seguimiento deportivo para equipos de fútbol.",
+    description: "Centro de organización, comunicación y seguimiento deportivo para equipos de fútbol.",
     type: "website",
     locale: "es_CO",
   },
   twitter: {
     card: "summary_large_image",
     title: "Futapp · Gestión Deportiva",
-    description:
-      "Centro de organización, comunicación y seguimiento deportivo para equipos de fútbol.",
+    description: "Centro de organización, comunicación y seguimiento deportivo para equipos de fútbol.",
   },
   icons: {
     icon: "/logo.svg",
@@ -75,7 +69,9 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >
-        {children}
+        <Providers>
+          {children}
+        </Providers>
         <Toaster />
         <Sonner position="top-center" richColors />
       </body>
