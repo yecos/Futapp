@@ -6,15 +6,13 @@ export const maxDuration = 60
 
 interface TestResult {
   label: string
-  host: string
-  user: string
-  port: string
+  url: string
   success: boolean
   error: string | null
-  tablesCount?: number
+  result?: any
 }
 
-async function tryConnection(url: string, label: string, host: string, user: string, port: string): Promise<TestResult> {
+async function tryConnection(url: string, label: string): Promise<TestResult> {
   try {
     const prisma = new PrismaClient({
       datasources: { db: { url } },
@@ -26,52 +24,71 @@ async function tryConnection(url: string, label: string, host: string, user: str
 
     const connectPromise = (async () => {
       await prisma.$connect()
-      const tables = await prisma.$queryRaw`SELECT count(*)::int as c FROM information_schema.tables WHERE table_schema = 'public'`
-      const count = (tables as any[])[0]?.c ?? 0
+      const result = await prisma.$queryRaw`SELECT count(*)::int as c FROM information_schema.tables WHERE table_schema = 'public'`
+      const count = (result as any[])[0]?.c ?? 0
       await prisma.$disconnect()
       return {
-        label, host, user, port,
+        label,
+        url: url.replace(/:[^:@]+@/, ':***@'),
         success: true,
         error: null,
-        tablesCount: count,
+        result: { tablesCount: count },
       } as TestResult
     })()
 
     return await Promise.race([connectPromise, timeoutPromise])
   } catch (error: any) {
     return {
-      label, host, user, port,
+      label,
+      url: url.replace(/:[^:@]+@/, ':***@'),
       success: false,
-      error: error.message?.slice(0, 150) || 'Unknown error',
+      error: error.message?.slice(0, 200) || 'Unknown error',
     }
   }
 }
 
 export async function GET() {
   const PROJECT_REF = 'pcazczdxcyiwcmstidxw'
-  const DB_PASSWORD = 'Arquitectura11%2A'
+  const PW = 'Arquitectura11%2A'
+  const HOST = 'aws-0-us-west-2.pooler.supabase.com'
 
-  // Confirmamos que la región es us-west-2 (obtenido vía API de Supabase)
   const tests: Promise<TestResult>[] = []
 
-  const configs = [
-    // Región CORRECTA: us-west-2
-    { region: 'aws-0-us-west-2', user: `postgres.${PROJECT_REF}`, port: '5432', pgbouncer: true },
-    { region: 'aws-0-us-west-2', user: `postgres.${PROJECT_REF}`, port: '6543', pgbouncer: true },
-    { region: 'aws-0-us-west-2', user: `postgres`, port: '5432', pgbouncer: true },
-    { region: 'aws-0-us-west-2', user: `postgres`, port: '6543', pgbouncer: true },
-    // Direct connection
-    { region: null, user: `postgres`, port: '5432', pgbouncer: false, directHost: `db.${PROJECT_REF}.supabase.co` },
-  ]
+  // 1. Con SSL require
+  tests.push(tryConnection(
+    `postgresql://postgres.${PROJECT_REF}:${PW}@${HOST}:5432/postgres?pgbouncer=true&connection_limit=1&sslmode=require`,
+    'session-pooler-5432-ssl'
+  ))
+  tests.push(tryConnection(
+    `postgresql://postgres.${PROJECT_REF}:${PW}@${HOST}:6543/postgres?pgbouncer=true&connection_limit=1&sslmode=require`,
+    'tx-pooler-6543-ssl'
+  ))
 
-  for (const cfg of configs) {
-    const host = cfg.directHost || `${cfg.region}.pooler.supabase.com`
-    const query = cfg.pgbouncer ? '?pgbouncer=true&connection_limit=1' : ''
-    const url = `postgresql://${cfg.user}:${DB_PASSWORD}@${host}:${cfg.port}/postgres${query}`
-    const label = `${cfg.region || 'direct'} | ${cfg.user} | ${cfg.port}`
+  // 2. Sin pgbouncer pero con SSL
+  tests.push(tryConnection(
+    `postgresql://postgres.${PROJECT_REF}:${PW}@${HOST}:5432/postgres?sslmode=require`,
+    'no-pgbouncer-5432-ssl'
+  ))
+  tests.push(tryConnection(
+    `postgresql://postgres.${PROJECT_REF}:${PW}@${HOST}:6543/postgres?sslmode=require`,
+    'no-pgbouncer-6543-ssl'
+  ))
 
-    tests.push(tryConnection(url, label, host, cfg.user, cfg.port))
-  }
+  // 3. Direct con SSL
+  tests.push(tryConnection(
+    `postgresql://postgres:${PW}@db.${PROJECT_REF}.supabase.co:5432/postgres?sslmode=require`,
+    'direct-5432-ssl'
+  ))
+
+  // 4. Con sslmode=no-verify (a veces necesario)
+  tests.push(tryConnection(
+    `postgresql://postgres.${PROJECT_REF}:${PW}@${HOST}:5432/postgres?pgbouncer=true&connection_limit=1&sslmode=no-verify`,
+    'session-pooler-5432-ssl-noverify'
+  ))
+  tests.push(tryConnection(
+    `postgresql://postgres.${PROJECT_REF}:${PW}@${HOST}:6543/postgres?pgbouncer=true&connection_limit=1&sslmode=no-verify`,
+    'tx-pooler-6543-ssl-noverify'
+  ))
 
   const results = await Promise.all(tests)
   const working = results.filter((r) => r.success)
