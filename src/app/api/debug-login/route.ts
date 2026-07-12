@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { randomUUID } from 'crypto'
 import { supabase } from '@/lib/supabase-server'
 
 export const dynamic = 'force-dynamic'
@@ -40,6 +41,7 @@ export async function POST(req: Request) {
       const { data: newUser, error: createError } = await supabase
         .from('User')
         .insert({
+          id: randomUUID(),
           email,
           name: name || null,
           image: image || null,
@@ -70,6 +72,7 @@ export async function POST(req: Request) {
       const { error: linkError } = await supabase
         .from('Account')
         .insert({
+          id: randomUUID(),
           userId,
           type: 'oauth',
           provider,
@@ -109,9 +112,11 @@ export async function POST(req: Request) {
       if (count === 1) {
         // Step 6: Create Team
         const ts = new Date().toISOString()
+        const teamId = randomUUID()
         const { data: team, error: teamError } = await supabase
           .from('Team')
           .insert({
+            id: teamId,
             name: 'Mi Equipo',
             shortName: 'MEQ',
             category: 'Por configurar',
@@ -136,8 +141,9 @@ export async function POST(req: Request) {
         const { error: memCreateError } = await supabase
           .from('TeamMembership')
           .insert({
+            id: randomUUID(),
             userId,
-            teamId: team.id,
+            teamId: teamId,
             role: 'ADMIN',
             status: 'ACTIVO',
             joinedAt: new Date().toISOString(),

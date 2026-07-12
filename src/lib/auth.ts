@@ -1,6 +1,7 @@
 import type { NextAuthOptions } from 'next-auth'
 import GoogleProvider from 'next-auth/providers/google'
 import { SupabaseRestAdapter } from '@/lib/supabase-auth-adapter'
+import { randomUUID } from 'crypto'
 
 /**
  * Configuración de NextAuth con Google + Supabase REST API Adapter.
@@ -70,6 +71,7 @@ export const authOptions: NextAuthOptions = {
               await supabase
                 .from('TeamMembership')
                 .insert({
+                  id: randomUUID(),
                   userId: user.id,
                   teamId: invite.teamId,
                   role: invite.role,
@@ -125,9 +127,12 @@ export const authOptions: NextAuthOptions = {
 
           if (count === 1) {
             // Primer usuario: crear Team por defecto y membership ADMIN
+            const ts = new Date().toISOString()
+            const teamId = randomUUID()
             const { data: team } = await supabase
               .from('Team')
               .insert({
+                id: teamId,
                 name: 'Mi Equipo',
                 shortName: 'MEQ',
                 category: 'Por configurar',
@@ -135,6 +140,8 @@ export const authOptions: NextAuthOptions = {
                 foundedYear: new Date().getFullYear(),
                 onboardingCompleted: false,
                 isActive: true,
+                createdAt: ts,
+                updatedAt: ts,
               })
               .select()
               .single()
@@ -142,11 +149,12 @@ export const authOptions: NextAuthOptions = {
             await supabase
               .from('TeamMembership')
               .insert({
+                id: randomUUID(),
                 userId: user.id,
-                teamId: team.id,
+                teamId: teamId,
                 role: 'ADMIN',
                 status: 'ACTIVO',
-                joinedAt: new Date().toISOString(),
+                joinedAt: ts,
               })
 
             token.role = 'ADMIN'
@@ -176,6 +184,7 @@ export const authOptions: NextAuthOptions = {
                 await supabase
                   .from('TeamMembership')
                   .insert({
+                    id: randomUUID(),
                     userId: user.id,
                     teamId: firstTeam.id,
                     role: 'SEGUIDOR',

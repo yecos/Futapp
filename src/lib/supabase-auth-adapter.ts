@@ -1,25 +1,35 @@
 import type { Adapter, AdapterAccount, AdapterSession, AdapterUser, VerificationToken } from 'next-auth/adapters'
 import { supabase } from '@/lib/supabase-server'
+import { randomUUID } from 'crypto'
 
 /**
  * Adapter custom de NextAuth que usa Supabase REST API.
  *
- * IMPORTANTE: Seteamos createdAt y updatedAt explícitamente porque las
- * columnas en Supabase no tienen DEFAULT (se crearon con SQL manual,
- * no con Prisma migrate).
+ * IMPORTANTE: Generamos los IDs explícitamente con randomUUID() porque
+ * las columnas 'id' en Supabase no tienen DEFAULT (se crearon con SQL
+ * manual, no con Prisma migrate que habría aplicado @default(cuid())).
+ *
+ * También seteamos createdAt y updatedAt explícitamente por la misma razón.
  */
 
 function now(): string {
   return new Date().toISOString()
 }
 
+function genId(): string {
+  return randomUUID()
+}
+
 export function SupabaseRestAdapter(): Adapter {
   return {
     async createUser(user: Omit<AdapterUser, 'id'>) {
       const ts = now()
+      const id = genId()
+      console.log('[SupabaseAdapter] createUser:', { id, email: user.email })
       const { data, error } = await supabase
         .from('User')
         .insert({
+          id,
           email: user.email,
           name: user.name,
           image: user.image,
@@ -34,6 +44,7 @@ export function SupabaseRestAdapter(): Adapter {
         console.error('[SupabaseAdapter] createUser error:', error)
         throw error
       }
+      console.log('[SupabaseAdapter] createUser success:', data.id)
       return mapUser(data)
     },
 
@@ -116,9 +127,12 @@ export function SupabaseRestAdapter(): Adapter {
     },
 
     async linkAccount(account: AdapterAccount) {
+      const id = genId()
+      console.log('[SupabaseAdapter] linkAccount:', { id, provider: account.provider, userId: account.userId })
       const { error } = await supabase
         .from('Account')
         .insert({
+          id,
           userId: account.userId,
           type: account.type,
           provider: account.provider,
@@ -136,6 +150,7 @@ export function SupabaseRestAdapter(): Adapter {
         console.error('[SupabaseAdapter] linkAccount error:', error)
         throw error
       }
+      console.log('[SupabaseAdapter] linkAccount success')
     },
 
     async unlinkAccount({ provider, providerAccountId }: { provider: string; providerAccountId: string }) {
@@ -147,10 +162,11 @@ export function SupabaseRestAdapter(): Adapter {
     },
 
     async createSession(session: { sessionToken: string; userId: string; expires: Date }) {
-      // Nota: con JWT strategy, esto no se llama. Pero lo implementamos por completitud.
+      const id = genId()
       const { data, error } = await supabase
         .from('Session')
         .insert({
+          id,
           sessionToken: session.sessionToken,
           userId: session.userId,
           expires: session.expires.toISOString(),
