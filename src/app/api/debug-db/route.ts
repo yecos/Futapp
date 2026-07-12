@@ -6,127 +6,91 @@ export const maxDuration = 60
 
 interface TestResult {
   label: string
-  url: string
+  host: string
+  user: string
+  port: string
   success: boolean
   error: string | null
-  tablesCount?: number
-  userCount?: number
 }
 
-/**
- * Endpoint que prueba automáticamente todas las combinaciones posibles
- * de connection strings de Supabase para encontrar la que funciona.
- */
+async function tryConnection(url: string, label: string, host: string, user: string, port: string): Promise<TestResult> {
+  try {
+    const prisma = new PrismaClient({
+      datasources: { db: { url } },
+    })
+
+    // Timeout de 8 segundos por intento
+    const timeoutPromise = new Promise<TestResult>((_, reject) =>
+      setTimeout(() => reject(new Error('Timeout 8s')), 8000)
+    )
+
+    const connectPromise = (async () => {
+      await prisma.$connect()
+      const tables = await prisma.$queryRaw`SELECT count(*)::int as c FROM information_schema.tables WHERE table_schema = 'public'`
+      const count = (tables as any[])[0]?.c ?? 0
+      await prisma.$disconnect()
+      return {
+        label, host, user, port,
+        success: true,
+        error: null,
+        tablesCount: count,
+      } as TestResult
+    })()
+
+    return await Promise.race([connectPromise, timeoutPromise])
+  } catch (error: any) {
+    return {
+      label, host, user, port,
+      success: false,
+      error: error.message?.slice(0, 150) || 'Unknown error',
+    }
+  }
+}
+
 export async function GET() {
   const PROJECT_REF = 'pcazczdxcyiwcmstidxw'
   const DB_PASSWORD = 'Arquitectura11*'
   const DB_PASSWORD_ENC = 'Arquitectura11%2A'
 
-  // Todas las regiones posibles de Supabase
+  // Solo las regiones más probables
   const regions = [
     'aws-0-us-west-1',
     'aws-0-us-east-1',
-    'aws-0-us-east-2',
     'aws-0-eu-west-1',
-    'aws-0-eu-central-1',
     'aws-0-ap-southeast-1',
-    'aws-0-ap-northeast-1',
-    'aws-0-ap-southeast-2',
     'aws-0-sa-east-1',
   ]
 
-  // Formatos de usuario posibles
-  const userFormats = [
-    `postgres.${PROJECT_REF}`,
-    `postgres`,
-  ]
+  // Solo los formatos más probables
+  const tests: Promise<TestResult>[] = []
 
-  // Tipos de conexión
-  const connectionTypes = [
-    { label: 'session-pooler-5432', port: '5432', usePooler: true, pgbouncer: true },
-    { label: 'transaction-pooler-6543', port: '6543', usePooler: true, pgbouncer: true },
-    { label: 'direct-5432', port: '5432', usePooler: false, pgbouncer: false },
-  ]
-
-  // Passwords (con y sin URL encode)
-  const passwords = [
-    { label: 'plain', value: DB_PASSWORD },
-    { label: 'encoded', value: DB_PASSWORD_ENC },
-  ]
-
-  const results: TestResult[] = []
-
-  // Probar todas las combinaciones
   for (const region of regions) {
-    for (const userFormat of userFormats) {
-      for (const connType of connectionTypes) {
-        for (const pw of passwords) {
-          const host = connType.usePooler
-            ? `${region}.pooler.supabase.com`
-            : `db.${PROJECT_REF}.supabase.co`
+    // Session pooler con usuario postgres.project_ref (formato nuevo)
+    const url1 = `postgresql://postgres.${PROJECT_REF}:${DB_PASSWORD_ENC}@${region}.pooler.supabase.com:5432/postgres?pgbouncer=true&connection_limit=1`
+    tests.push(tryConnection(url1, `${region} | postgres.ref | session-5432`, `${region}.pooler.supabase.com`, `postgres.${PROJECT_REF}`, '5432'))
 
-          const query = connType.pgbouncer
-            ? '?pgbouncer=true&connection_limit=1'
-            : ''
+    // Transaction pooler con usuario postgres.project_ref
+    const url2 = `postgresql://postgres.${PROJECT_REF}:${DB_PASSWORD_ENC}@${region}.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1`
+    tests.push(tryConnection(url2, `${region} | postgres.ref | tx-6543`, `${region}.pooler.supabase.com`, `postgres.${PROJECT_REF}`, '6543'))
 
-          const url = `postgresql://${userFormat}:${pw.value}@${host}:${connType.port}/postgres${query}`
-
-          const label = `${region} | ${userFormat} | ${connType.label} | pw-${pw.label}`
-
-          try {
-            const prisma = new PrismaClient({
-              datasources: { db: { url } },
-              log: ['error'],
-            })
-
-            await prisma.$connect()
-            const tables = await prisma.$queryRaw`
-              SELECT table_name
-              FROM information_schema.tables
-              WHERE table_schema = 'public'
-              ORDER BY table_name;
-            `
-            const userCount = await prisma.user.count().catch(() => -1)
-
-            results.push({
-              label,
-              url: url.replace(pw.value, '***'),
-              success: true,
-              error: null,
-              tablesCount: (tables as any[]).length,
-              userCount: userCount as number,
-            })
-
-            await prisma.$disconnect()
-            // Si encontramos una que funciona, salir del loop
-            return NextResponse.json({
-              success: true,
-              workingConnection: {
-                label,
-                url: url.replace(pw.value, '***'),
-                urlWithPassword: url,
-                tablesCount: (tables as any[]).length,
-                userCount,
-              },
-              allResults: results,
-            })
-          } catch (error: any) {
-            results.push({
-              label,
-              url: url.replace(pw.value, '***'),
-              success: false,
-              error: error.message?.slice(0, 200) || 'Unknown error',
-            })
-          }
-        }
-      }
+    // Direct connection con usuario postgres simple
+    const url3 = `postgresql://postgres:${DB_PASSWORD_ENC}@db.${PROJECT_REF}.supabase.co:5432/postgres`
+    if (region === 'aws-0-us-west-1') {
+      tests.push(tryConnection(url3, `direct | postgres | 5432`, `db.${PROJECT_REF}.supabase.co`, 'postgres', '5432'))
     }
   }
 
+  // Ejecutar TODAS en paralelo
+  const results = await Promise.all(tests)
+
+  // Encontrar la primera que funcionó
+  const working = results.find((r) => r.success)
+
   return NextResponse.json({
-    success: false,
-    message: 'No se encontró ninguna combinación que funcione',
+    success: !!working,
+    workingConnection: working || null,
     allResults: results,
     totalTested: results.length,
+    timestamp: new Date().toISOString(),
   })
 }
