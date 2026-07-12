@@ -27,7 +27,8 @@ export const authOptions: NextAuthOptions = {
     error: '/login',
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger }) {
+      // En el primer login (user viene del adapter)
       if (user) {
         token.userId = user.id
 
@@ -97,14 +98,21 @@ export const authOptions: NextAuthOptions = {
             return token
           }
         }
+      }
 
-        // Cargar membership existente (sin crear nada automáticamente)
+      // Siempre verificar el membership actual cuando:
+      // - Es primer login (user presente)
+      // - El token se está actualizando (trigger === 'update')
+      // - No hay teamId en el token (para refrescar usuarios sin team)
+      // - El status es PENDIENTE (verificar si fue aprobado/rechazado/eliminado)
+      if (user || trigger === 'update' || (token.userId && !token.teamId) || token.membershipStatus === 'PENDIENTE') {
         const { supabase } = await import('@/lib/supabase-server')
 
+        // Buscar membership ACTIVO
         const { data: membership } = await supabase
           .from('TeamMembership')
           .select('*, team!inner(*)')
-          .eq('userId', user.id)
+          .eq('userId', token.userId)
           .eq('status', 'ACTIVO')
           .single()
 
@@ -114,11 +122,26 @@ export const authOptions: NextAuthOptions = {
           token.membershipStatus = membership.status
           token.onboardingCompleted = (membership.team as any).onboardingCompleted
         } else {
-          // Usuario sin team membership → va a /choose-team
-          token.role = null
-          token.teamId = null
-          token.membershipStatus = null
-          token.onboardingCompleted = false
+          // Verificar si tiene membership PENDIENTE (aún esperando aprobación)
+          const { data: pendingMembership } = await supabase
+            .from('TeamMembership')
+            .select('teamId')
+            .eq('userId', token.userId)
+            .eq('status', 'PENDIENTE')
+            .single()
+
+          if (pendingMembership) {
+            // Todavía pendiente
+            token.role = 'SEGUIDOR'
+            token.teamId = pendingMembership.teamId
+            token.membershipStatus = 'PENDIENTE'
+          } else {
+            // Sin membership → va a /choose-team
+            token.role = null
+            token.teamId = null
+            token.membershipStatus = null
+            token.onboardingCompleted = false
+          }
         }
       }
       return token
