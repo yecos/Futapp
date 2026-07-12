@@ -11,6 +11,7 @@ interface TestResult {
   port: string
   success: boolean
   error: string | null
+  tablesCount?: number
 }
 
 async function tryConnection(url: string, label: string, host: string, user: string, port: string): Promise<TestResult> {
@@ -50,57 +51,35 @@ export async function GET() {
   const PROJECT_REF = 'pcazczdxcyiwcmstidxw'
   const DB_PASSWORD = 'Arquitectura11%2A'
 
+  // Confirmamos que la región es us-west-2 (obtenido vía API de Supabase)
   const tests: Promise<TestResult>[] = []
 
-  // Formatos de host NUEVOS y VIEJOS de Supabase
-  const hostFormats = [
-    // Formato nuevo (sin aws-0- prefix)
-    { host: `us-west-1.pooler.supabase.com`, label: 'new-us-west-1' },
-    { host: `us-east-1.pooler.supabase.com`, label: 'new-us-east-1' },
-    { host: `eu-west-1.pooler.supabase.com`, label: 'new-eu-west-1' },
-    // Formato viejo (con aws-0- prefix)
-    { host: `aws-0-us-west-1.pooler.supabase.com`, label: 'old-aws-0-us-west-1' },
-    // Project-specific
-    { host: `${PROJECT_REF}.pooler.supabase.com`, label: 'project-specific' },
-    // Direct con puerto 6543
-    { host: `db.${PROJECT_REF}.supabase.co`, label: 'direct-with-6543' },
+  const configs = [
+    // Región CORRECTA: us-west-2
+    { region: 'aws-0-us-west-2', user: `postgres.${PROJECT_REF}`, port: '5432', pgbouncer: true },
+    { region: 'aws-0-us-west-2', user: `postgres.${PROJECT_REF}`, port: '6543', pgbouncer: true },
+    { region: 'aws-0-us-west-2', user: `postgres`, port: '5432', pgbouncer: true },
+    { region: 'aws-0-us-west-2', user: `postgres`, port: '6543', pgbouncer: true },
+    // Direct connection
+    { region: null, user: `postgres`, port: '5432', pgbouncer: false, directHost: `db.${PROJECT_REF}.supabase.co` },
   ]
 
-  const userFormats = [
-    `postgres.${PROJECT_REF}`,
-    `postgres`,
-  ]
+  for (const cfg of configs) {
+    const host = cfg.directHost || `${cfg.region}.pooler.supabase.com`
+    const query = cfg.pgbouncer ? '?pgbouncer=true&connection_limit=1' : ''
+    const url = `postgresql://${cfg.user}:${DB_PASSWORD}@${host}:${cfg.port}/postgres${query}`
+    const label = `${cfg.region || 'direct'} | ${cfg.user} | ${cfg.port}`
 
-  for (const hostFormat of hostFormats) {
-    for (const userFormat of userFormats) {
-      // Puerto 5432
-      const port5432 = hostFormat.label.includes('direct') ? '5432' : '5432'
-      const url5432 = `postgresql://${userFormat}:${DB_PASSWORD}@${hostFormat.host}:5432/postgres?pgbouncer=true&connection_limit=1`
-      tests.push(tryConnection(url5432, `${hostFormat.label} | ${userFormat} | 5432`, hostFormat.host, userFormat, '5432'))
-
-      // Puerto 6543 (solo para pooler, no direct)
-      if (!hostFormat.label.includes('direct')) {
-        const url6543 = `postgresql://${userFormat}:${DB_PASSWORD}@${hostFormat.host}:6543/postgres?pgbouncer=true&connection_limit=1`
-        tests.push(tryConnection(url6543, `${hostFormat.label} | ${userFormat} | 6543`, hostFormat.host, userFormat, '6543'))
-      } else {
-        // Direct sin pgbouncer
-        const urlDirect = `postgresql://${userFormat}:${DB_PASSWORD}@${hostFormat.host}:5432/postgres`
-        tests.push(tryConnection(urlDirect, `${hostFormat.label} | ${userFormat} | direct-5432-no-pgbouncer`, hostFormat.host, userFormat, '5432'))
-      }
-    }
+    tests.push(tryConnection(url, label, host, cfg.user, cfg.port))
   }
 
-  // Ejecutar TODAS en paralelo
   const results = await Promise.all(tests)
-
-  // Encontrar las que funcionaron
   const working = results.filter((r) => r.success)
 
   return NextResponse.json({
     success: working.length > 0,
     workingConnections: working,
     allResults: results,
-    totalTested: results.length,
     timestamp: new Date().toISOString(),
   })
 }
