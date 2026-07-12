@@ -2,21 +2,21 @@ import type { Adapter, AdapterAccount, AdapterSession, AdapterUser, Verification
 import { supabase } from '@/lib/supabase-server'
 
 /**
- * Adapter custom de NextAuth que usa Supabase REST API en lugar de PostgreSQL directo.
+ * Adapter custom de NextAuth que usa Supabase REST API.
  *
- * Esto evita los problemas de conexión PostgreSQL desde Vercel serverless.
- *
- * Implementa los métodos requeridos por NextAuth:
- * - createUser, getUser, getUserByEmail
- * - updateUser, deleteUser
- * - createSession, getSession, updateSession, deleteSession
- * - createVerificationToken, useVerificationToken
- * - linkAccount, unlinkAccount, getUserByAccount
+ * IMPORTANTE: Seteamos createdAt y updatedAt explícitamente porque las
+ * columnas en Supabase no tienen DEFAULT (se crearon con SQL manual,
+ * no con Prisma migrate).
  */
+
+function now(): string {
+  return new Date().toISOString()
+}
 
 export function SupabaseRestAdapter(): Adapter {
   return {
     async createUser(user: Omit<AdapterUser, 'id'>) {
+      const ts = now()
       const { data, error } = await supabase
         .from('User')
         .insert({
@@ -24,11 +24,16 @@ export function SupabaseRestAdapter(): Adapter {
           name: user.name,
           image: user.image,
           emailVerified: user.emailVerified?.toISOString(),
+          createdAt: ts,
+          updatedAt: ts,
         })
         .select()
         .single()
 
-      if (error) throw error
+      if (error) {
+        console.error('[SupabaseAdapter] createUser error:', error)
+        throw error
+      }
       return mapUser(data)
     },
 
@@ -40,7 +45,7 @@ export function SupabaseRestAdapter(): Adapter {
         .single()
 
       if (error) {
-        if (error.code === 'PGRST116') return null // Not found
+        if (error.code === 'PGRST116') return null
         throw error
       }
       return mapUser(data)
@@ -85,7 +90,7 @@ export function SupabaseRestAdapter(): Adapter {
     },
 
     async updateUser(user: Partial<AdapterUser> & { id: string }) {
-      const update: any = {}
+      const update: any = { updatedAt: now() }
       if (user.email !== undefined) update.email = user.email
       if (user.name !== undefined) update.name = user.name
       if (user.image !== undefined) update.image = user.image
@@ -127,7 +132,10 @@ export function SupabaseRestAdapter(): Adapter {
           session_state: account.session_state,
         })
 
-      if (error) throw error
+      if (error) {
+        console.error('[SupabaseAdapter] linkAccount error:', error)
+        throw error
+      }
     },
 
     async unlinkAccount({ provider, providerAccountId }: { provider: string; providerAccountId: string }) {
@@ -139,6 +147,7 @@ export function SupabaseRestAdapter(): Adapter {
     },
 
     async createSession(session: { sessionToken: string; userId: string; expires: Date }) {
+      // Nota: con JWT strategy, esto no se llama. Pero lo implementamos por completitud.
       const { data, error } = await supabase
         .from('Session')
         .insert({
@@ -251,7 +260,6 @@ export function SupabaseRestAdapter(): Adapter {
         throw error
       }
 
-      // Eliminar el token usado
       await supabase
         .from('VerificationToken')
         .delete()
