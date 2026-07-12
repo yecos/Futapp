@@ -138,15 +138,18 @@ export async function GET() {
     })
   }
 
-  // Test 5: Intentar crear un user de prueba
+  // Test 5: Intentar crear un user de prueba (con timestamps explícitos)
   try {
     const testUserId = 'test-' + Date.now()
+    const ts = new Date().toISOString()
     const { data, error } = await supabase
       .from('User')
       .insert({
         id: testUserId,
         email: `test-${Date.now()}@futapp.debug`,
         name: 'Test User Debug',
+        createdAt: ts,
+        updatedAt: ts,
       })
       .select()
       .single()
