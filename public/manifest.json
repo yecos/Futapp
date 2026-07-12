@@ -1,0 +1,47 @@
+{
+  "name": "Futapp — Gestión Deportiva",
+  "short_name": "Futapp",
+  "description": "Centro de organización, comunicación y seguimiento deportivo para equipos de fútbol.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#16a34a",
+  "theme_color": "#16a34a",
+  "orientation": "portrait-primary",
+  "categories": ["sports", "productivity", "utilities"],
+  "lang": "es",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.svg",
+      "sizes": "192x192 256x256 384x384 512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Inicio",
+      "short_name": "Inicio",
+      "description": "Ver panel del equipo",
+      "url": "/?view=inicio"
+    },
+    {
+      "name": "Calendario",
+      "short_name": "Calendario",
+      "description": "Ver próximos eventos",
+      "url": "/?view=calendario"
+    },
+    {
+      "name": "Convocatoria",
+      "short_name": "Convocatoria",
+      "description": "Ver alineación",
+      "url": "/?view=convocatorias"
+    }
+  ]
+}
