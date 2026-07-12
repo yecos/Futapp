@@ -8,8 +8,14 @@ generator client {
 
 datasource db {
   provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  // Vercel crea estas variables automáticamente al integrar Supabase
+  // POSTGRES_PRISMA_URL: connection pooler (pgbouncer) para runtime serverless
+  // POSTGRES_URL_NON_POOLING: conexión directa para migraciones
+  url       = env("POSTGRES_PRISMA_URL")
+  directUrl = env("POSTGRES_URL_NON_POOLING")
+  // Fallback a nombres alternativos si las variables anteriores no existen
+  // url       = env("DATABASE_URL")
+  // directUrl = env("DIRECT_URL")
 }
 
 // =====================================================
