@@ -19,7 +19,6 @@ async function tryConnection(url: string, label: string, host: string, user: str
       datasources: { db: { url } },
     })
 
-    // Timeout de 8 segundos por intento
     const timeoutPromise = new Promise<TestResult>((_, reject) =>
       setTimeout(() => reject(new Error('Timeout 8s')), 8000)
     )
@@ -49,46 +48,57 @@ async function tryConnection(url: string, label: string, host: string, user: str
 
 export async function GET() {
   const PROJECT_REF = 'pcazczdxcyiwcmstidxw'
-  const DB_PASSWORD = 'Arquitectura11*'
-  const DB_PASSWORD_ENC = 'Arquitectura11%2A'
+  const DB_PASSWORD = 'Arquitectura11%2A'
 
-  // Solo las regiones más probables
-  const regions = [
-    'aws-0-us-west-1',
-    'aws-0-us-east-1',
-    'aws-0-eu-west-1',
-    'aws-0-ap-southeast-1',
-    'aws-0-sa-east-1',
-  ]
-
-  // Solo los formatos más probables
   const tests: Promise<TestResult>[] = []
 
-  for (const region of regions) {
-    // Session pooler con usuario postgres.project_ref (formato nuevo)
-    const url1 = `postgresql://postgres.${PROJECT_REF}:${DB_PASSWORD_ENC}@${region}.pooler.supabase.com:5432/postgres?pgbouncer=true&connection_limit=1`
-    tests.push(tryConnection(url1, `${region} | postgres.ref | session-5432`, `${region}.pooler.supabase.com`, `postgres.${PROJECT_REF}`, '5432'))
+  // Formatos de host NUEVOS y VIEJOS de Supabase
+  const hostFormats = [
+    // Formato nuevo (sin aws-0- prefix)
+    { host: `us-west-1.pooler.supabase.com`, label: 'new-us-west-1' },
+    { host: `us-east-1.pooler.supabase.com`, label: 'new-us-east-1' },
+    { host: `eu-west-1.pooler.supabase.com`, label: 'new-eu-west-1' },
+    // Formato viejo (con aws-0- prefix)
+    { host: `aws-0-us-west-1.pooler.supabase.com`, label: 'old-aws-0-us-west-1' },
+    // Project-specific
+    { host: `${PROJECT_REF}.pooler.supabase.com`, label: 'project-specific' },
+    // Direct con puerto 6543
+    { host: `db.${PROJECT_REF}.supabase.co`, label: 'direct-with-6543' },
+  ]
 
-    // Transaction pooler con usuario postgres.project_ref
-    const url2 = `postgresql://postgres.${PROJECT_REF}:${DB_PASSWORD_ENC}@${region}.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1`
-    tests.push(tryConnection(url2, `${region} | postgres.ref | tx-6543`, `${region}.pooler.supabase.com`, `postgres.${PROJECT_REF}`, '6543'))
+  const userFormats = [
+    `postgres.${PROJECT_REF}`,
+    `postgres`,
+  ]
 
-    // Direct connection con usuario postgres simple
-    const url3 = `postgresql://postgres:${DB_PASSWORD_ENC}@db.${PROJECT_REF}.supabase.co:5432/postgres`
-    if (region === 'aws-0-us-west-1') {
-      tests.push(tryConnection(url3, `direct | postgres | 5432`, `db.${PROJECT_REF}.supabase.co`, 'postgres', '5432'))
+  for (const hostFormat of hostFormats) {
+    for (const userFormat of userFormats) {
+      // Puerto 5432
+      const port5432 = hostFormat.label.includes('direct') ? '5432' : '5432'
+      const url5432 = `postgresql://${userFormat}:${DB_PASSWORD}@${hostFormat.host}:5432/postgres?pgbouncer=true&connection_limit=1`
+      tests.push(tryConnection(url5432, `${hostFormat.label} | ${userFormat} | 5432`, hostFormat.host, userFormat, '5432'))
+
+      // Puerto 6543 (solo para pooler, no direct)
+      if (!hostFormat.label.includes('direct')) {
+        const url6543 = `postgresql://${userFormat}:${DB_PASSWORD}@${hostFormat.host}:6543/postgres?pgbouncer=true&connection_limit=1`
+        tests.push(tryConnection(url6543, `${hostFormat.label} | ${userFormat} | 6543`, hostFormat.host, userFormat, '6543'))
+      } else {
+        // Direct sin pgbouncer
+        const urlDirect = `postgresql://${userFormat}:${DB_PASSWORD}@${hostFormat.host}:5432/postgres`
+        tests.push(tryConnection(urlDirect, `${hostFormat.label} | ${userFormat} | direct-5432-no-pgbouncer`, hostFormat.host, userFormat, '5432'))
+      }
     }
   }
 
   // Ejecutar TODAS en paralelo
   const results = await Promise.all(tests)
 
-  // Encontrar la primera que funcionó
-  const working = results.find((r) => r.success)
+  // Encontrar las que funcionaron
+  const working = results.filter((r) => r.success)
 
   return NextResponse.json({
-    success: !!working,
-    workingConnection: working || null,
+    success: working.length > 0,
+    workingConnections: working,
     allResults: results,
     totalTested: results.length,
     timestamp: new Date().toISOString(),
