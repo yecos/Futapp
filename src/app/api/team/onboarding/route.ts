@@ -3,32 +3,47 @@ import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import { supabase } from '@/lib/supabase-server'
 
-// Re-export POST handler from /api/team
+/**
+ * POST /api/team/onboarding
+ * Completa el onboarding del equipo (colores + datos bancarios).
+ * Solo actualiza los campos que no se pidieron en /choose-team.
+ *
+ * IMPORTANTE: Verifica el rol directamente desde la DB, no del JWT
+ * (que puede estar desactualizado después de crear el equipo).
+ */
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
     if (!session?.user) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
-    if (session.user.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Solo el admin puede configurar el equipo' }, { status: 403 })
+
+    // Consultar membership directamente desde la DB
+    const { data: membership } = await supabase
+      .from('TeamMembership')
+      .select('role, teamId')
+      .eq('userId', session.user.id)
+      .eq('status', 'ACTIVO')
+      .single()
+
+    if (!membership || !membership.teamId) {
+      return NextResponse.json({ error: 'Sin equipo' }, { status: 400 })
+    }
+
+    if (membership.role !== 'ADMIN') {
+      return NextResponse.json(
+        { error: 'Solo el admin puede configurar el equipo' },
+        { status: 403 }
+      )
     }
 
     const body = await req.json()
-    const teamId = session.user.teamId
-    if (!teamId) {
-      return NextResponse.json({ error: 'Sin equipo asignado' }, { status: 400 })
-    }
 
     const { error } = await supabase
       .from('Team')
       .update({
-        name: body.name,
-        shortName: body.shortName?.toUpperCase(),
-        category: body.category,
-        coachName: body.coachName,
-        foundedYear: body.foundedYear,
-        primaryColor: body.primaryColor,
+        primaryColor: body.primaryColor || '#16a34a',
+        foundedYear: body.foundedYear || new Date().getFullYear(),
         bankName: body.bankName || 'Bancolombia',
         accountType: body.accountType || 'Ahorros',
         accountNumber: body.accountNumber,
@@ -37,7 +52,7 @@ export async function POST(req: NextRequest) {
         onboardingCompleted: true,
         updatedAt: new Date().toISOString(),
       })
-      .eq('id', teamId)
+      .eq('id', membership.teamId)
 
     if (error) throw error
 
