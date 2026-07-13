@@ -17,6 +17,7 @@ interface DashboardViewProps {
   teamName: string
   teamShortName: string
   currentRole?: string
+  initialData?: DashboardData
 }
 
 interface DashboardData {
@@ -44,14 +45,17 @@ interface DashboardData {
   }>
 }
 
-export function DashboardView({ teamName, teamShortName, currentRole }: DashboardViewProps) {
-  const { data: session, status } = useSession()
-  const [data, setData] = useState<DashboardData | null>(null)
+export function DashboardView({ teamName, teamShortName, currentRole, initialData }: DashboardViewProps) {
+  const { data: session } = useSession()
+  const [data, setData] = useState<DashboardData | null>(initialData || null)
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
     setMounted(true)
-    fetchDashboardData()
+    // Si ya tenemos datos del Server Component, no necesitamos fetch
+    if (!initialData) {
+      fetchDashboardData()
+    }
   }, [])
 
   async function fetchDashboardData() {
