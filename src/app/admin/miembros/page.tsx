@@ -9,20 +9,20 @@ export default async function AdminMiembrosPage() {
   if (!session?.user) redirect('/login')
 
   // Verificar rol desde DB (no del JWT que puede estar desactualizado)
-  const { data: memberships } = await supabase
+  const { data: myMemberships } = await supabase
     .from('TeamMembership')
     .select('role, teamId')
     .eq('userId', session.user.id)
     .eq('status', 'ACTIVO')
     .limit(1)
 
-  const membership = memberships?.[0]
-  if (!membership?.teamId) redirect('/choose-team')
-  if (membership.role !== 'ADMIN') redirect('/')
+  const myMembership = myMemberships?.[0]
+  if (!myMembership?.teamId) redirect('/choose-team')
+  if (myMembership.role !== 'ADMIN') redirect('/')
 
-  const teamId = membership.teamId
+  const teamId = myMembership.teamId
 
-  const { data: memberships } = await supabase
+  const { data: allMemberships } = await supabase
     .from('TeamMembership')
     .select(`
       *,
@@ -39,5 +39,5 @@ export default async function AdminMiembrosPage() {
     .gt('expiresAt', new Date().toISOString())
     .order('createdAt', { ascending: false })
 
-  return <MembersManagerView memberships={memberships || []} invites={invites || []} />
+  return <MembersManagerView memberships={allMemberships || []} invites={invites || []} />
 }
