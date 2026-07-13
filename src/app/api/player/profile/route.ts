@@ -35,6 +35,36 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Ya tienes un perfil de jugador' }, { status: 400 })
     }
 
+    // Si jerseyNumber es 0 o no se especifica, buscar el siguiente disponible
+    if (!jerseyNumber || jerseyNumber === 0) {
+      const { data: usedNumbers } = await supabase
+        .from('Player')
+        .select('jerseyNumber')
+        .eq('teamId', teamId)
+        .order('jerseyNumber', { ascending: true })
+
+      const usedSet = new Set((usedNumbers || []).map(p => p.jerseyNumber))
+      let nextNumber = 1
+      while (usedSet.has(nextNumber)) nextNumber++
+
+      body.jerseyNumber = nextNumber
+    } else {
+      // Verificar que el dorsal no esté en uso
+      const { data: dorsalInUse } = await supabase
+        .from('Player')
+        .select('id, fullName')
+        .eq('teamId', teamId)
+        .eq('jerseyNumber', jerseyNumber)
+        .single()
+
+      if (dorsalInUse) {
+        return NextResponse.json(
+          { error: `El dorsal #${jerseyNumber} ya está en uso por ${dorsalInUse.fullName}` },
+          { status: 400 }
+        )
+      }
+    }
+
     const ts = new Date().toISOString()
     const playerData: any = {
       id: randomUUID(),
@@ -43,7 +73,7 @@ export async function POST(req: NextRequest) {
       firstName,
       lastName,
       fullName: fullName || `${firstName} ${lastName}`,
-      jerseyNumber: jerseyNumber || 0,
+      jerseyNumber: body.jerseyNumber || 0,
       primaryPosition: primaryPosition || 'MEDIOCAMPISTA',
       secondaryPosition: secondaryPosition || null,
       age: age || 25,

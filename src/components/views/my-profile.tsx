@@ -40,7 +40,7 @@ export function MyProfileView({
   const [form, setForm] = useState({
     firstName: player?.firstName || userName.split(' ')[0] || '',
     lastName: player?.lastName || userName.split(' ').slice(1).join(' ') || '',
-    jerseyNumber: player?.jerseyNumber || 0,
+    jerseyNumber: player?.jerseyNumber || '',
     primaryPosition: player?.primaryPosition || 'MEDIOCAMPISTA',
     secondaryPosition: player?.secondaryPosition || '',
     age: player?.age || 25,
@@ -108,6 +108,7 @@ export function MyProfileView({
     try {
       const payload = {
         ...form,
+        jerseyNumber: form.jerseyNumber ? parseInt(String(form.jerseyNumber)) : 0,
         height: form.height ? parseInt(String(form.height)) : null,
         weight: form.weight ? parseInt(String(form.weight)) : null,
         teamId,
@@ -250,9 +251,11 @@ export function MyProfileView({
                 <Input
                   type="number"
                   value={form.jerseyNumber}
-                  onChange={(e) => setForm({ ...form, jerseyNumber: parseInt(e.target.value) || 0 })}
+                  onChange={(e) => setForm({ ...form, jerseyNumber: e.target.value })}
+                  placeholder="Auto"
                   className="bg-card/50"
                 />
+                <p className="text-[10px] text-muted-foreground mt-1">Vacío = auto-asignado</p>
               </div>
               <div>
                 <Label>Edad</Label>
