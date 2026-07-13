@@ -12,7 +12,16 @@ export async function GET() {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    const teamId = session.user.teamId
+    // Consultar teamId directamente desde la DB (no del JWT)
+    const { data: memberships } = await supabase
+      .from('TeamMembership')
+      .select('teamId, role')
+      .eq('userId', session.user.id)
+      .eq('status', 'ACTIVO')
+      .order('joinedAt', { ascending: false })
+      .limit(1)
+
+    const teamId = memberships?.[0]?.teamId
     if (!teamId) {
       return NextResponse.json({ error: 'Sin equipo' }, { status: 400 })
     }
@@ -32,8 +41,14 @@ export async function GET() {
       .gte('date', now)
       .eq('status', 'PROGRAMADO')
 
+    // Contar TODOS los eventos (para mostrar más info)
+    const { count: allEvents } = await supabase
+      .from('Event')
+      .select('*', { count: 'exact', head: true })
+      .eq('teamId', teamId)
+
     // Obtener próximo evento
-    const { data: nextEvent } = await supabase
+    const { data: nextEvents } = await supabase
       .from('Event')
       .select('title, date, location, type')
       .eq('teamId', teamId)
@@ -41,16 +56,18 @@ export async function GET() {
       .eq('status', 'PROGRAMADO')
       .order('date', { ascending: true })
       .limit(1)
-      .single()
+
+    const nextEvent = nextEvents?.[0] || null
 
     // Top goleador
-    const { data: topScorer } = await supabase
+    const { data: topScorers } = await supabase
       .from('Player')
       .select('fullName, goals, jerseyNumber')
       .eq('teamId', teamId)
       .order('goals', { ascending: false })
       .limit(1)
-      .single()
+
+    const topScorer = topScorers?.[0] || null
 
     // Pagos pendientes
     const { count: totalPayments } = await supabase
@@ -96,10 +113,11 @@ export async function GET() {
     return NextResponse.json({
       totalPlayers: totalPlayers || 0,
       totalEvents: totalEvents || 0,
+      allEvents: allEvents || 0,
       totalPayments: totalPayments || 0,
       totalRecaudado,
-      nextEvent: nextEvent || null,
-      topScorer: topScorer || null,
+      nextEvent,
+      topScorer,
       recentResults,
     })
   } catch (error: any) {

@@ -140,7 +140,7 @@ export function DashboardView({ teamName, teamShortName, currentRole }: Dashboar
 
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
           <StatsWidget icon={Users} label="Jugadores" value={data?.totalPlayers || 0} variant="primary" index={0} />
-          <StatsWidget icon={Calendar} label="Eventos" value={data?.totalEvents || 0} variant="info" index={1} />
+          <StatsWidget icon={Calendar} label="Próx. eventos" value={data?.totalEvents || 0} variant="info" index={1} />
           <StatsWidget icon={TrendingUp} label="Recaudado" value={data?.totalRecaudado || 0} prefix="$" variant="success" index={2} />
           <StatsWidget icon={CreditCard} label="Pagos pend." value={data?.totalPayments || 0} variant="warning" index={3} />
         </div>
