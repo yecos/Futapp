@@ -8,24 +8,29 @@ export default async function HomePage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
 
-  // Si no tiene teamId → /choose-team
-  if (!session.user.teamId) redirect('/choose-team')
+  // Consultar membership directamente desde la DB (no del JWT que puede estar desactualizado)
+  const { data: memberships } = await supabase
+    .from('TeamMembership')
+    .select('role, status, teamId, team:Team(name, shortName, onboardingCompleted)')
+    .eq('userId', session.user.id)
+    .eq('status', 'ACTIVO')
+    .order('joinedAt', { ascending: false })
+    .limit(1)
 
-  // Si está pendiente → /pending
-  if (session.user.membershipStatus === 'PENDIENTE') redirect('/pending')
+  const membership = memberships?.[0]
 
-  // Si es admin y no completó onboarding → /onboarding
-  if (session.user.role === 'ADMIN' && !session.user.onboardingCompleted) {
+  // Sin team → choose-team
+  if (!membership || !membership.teamId) redirect('/choose-team')
+
+  // Pendiente → pending
+  if (membership.status === 'PENDIENTE') redirect('/pending')
+
+  // Admin sin onboarding → onboarding
+  if (membership.role === 'ADMIN' && !(membership.team as any)?.onboardingCompleted) {
     redirect('/onboarding')
   }
 
-  const teamId = session.user.teamId
-  const { data: team } = await supabase
-    .from('Team')
-    .select('name, shortName')
-    .eq('id', teamId)
-    .single()
-
+  const team = membership.team as any
   if (!team) redirect('/choose-team')
 
   return <DashboardView teamName={team.name} teamShortName={team.shortName} />

@@ -8,13 +8,17 @@ export default async function OnboardingPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
 
-  // Consultar membership directamente desde la DB (no del JWT que puede estar desactualizado)
-  const { data: membership } = await supabase
+  // Consultar membership directamente desde la DB
+  // Usar .limit(1) en lugar de .single() para evitar errores si hay múltiples
+  const { data: memberships } = await supabase
     .from('TeamMembership')
     .select('role, status, teamId, team:Team(*)')
     .eq('userId', session.user.id)
     .eq('status', 'ACTIVO')
-    .single()
+    .order('joinedAt', { ascending: false })
+    .limit(1)
+
+  const membership = memberships?.[0]
 
   if (!membership || !membership.teamId) {
     redirect('/choose-team')

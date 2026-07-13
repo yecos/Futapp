@@ -14,8 +14,8 @@ const createTeamSchema = z.object({
 
 /**
  * POST /api/team/create
- * Crea un nuevo equipo y hace al usuario ADMIN de ese equipo.
- * El usuario debe estar logueado pero sin team membership activo.
+ * Crea un nuevo equipo y hace al usuario ADMIN.
+ * RECHAZA si el usuario ya tiene un membership ACTIVO.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -24,12 +24,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // Verificar que el usuario no tenga ya un team activo
-    if (session.user.teamId) {
-      return NextResponse.json(
-        { error: 'Ya perteneces a un equipo. Sal del equipo actual primero.' },
-        { status: 400 }
-      )
+    // Verificar directamente desde la DB si ya tiene membership ACTIVO
+    const { data: existingMembership } = await supabase
+      .from('TeamMembership')
+      .select('id, teamId, role, status')
+      .eq('userId', session.user.id)
+      .eq('status', 'ACTIVO')
+      .limit(1)
+
+    if (existingMembership && existingMembership.length > 0) {
+      // Ya tiene un equipo → no crear otro
+      return NextResponse.json({
+        success: true,
+        alreadyHasTeam: true,
+        teamId: existingMembership[0].teamId,
+        message: 'Ya tienes un equipo activo',
+      })
     }
 
     const body = await req.json()
@@ -46,8 +56,8 @@ export async function POST(req: NextRequest) {
     const membershipId = randomUUID()
     const ts = new Date().toISOString()
 
-    // Crear el Team
-    const { data: team, error: teamError } = await supabase
+    // Crear Team
+    const { error: teamError } = await supabase
       .from('Team')
       .insert({
         id: teamId,
@@ -61,8 +71,6 @@ export async function POST(req: NextRequest) {
         createdAt: ts,
         updatedAt: ts,
       })
-      .select()
-      .single()
 
     if (teamError) {
       console.error('[API team/create] Team error:', teamError)
@@ -83,7 +91,6 @@ export async function POST(req: NextRequest) {
 
     if (memError) {
       console.error('[API team/create] Membership error:', memError)
-      // Rollback: eliminar el team creado
       await supabase.from('Team').delete().eq('id', teamId)
       return NextResponse.json({ error: memError.message }, { status: 500 })
     }
@@ -91,11 +98,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       teamId,
-      team: {
-        id: team.id,
-        name: team.name,
-        shortName: team.shortName,
-      },
     })
   } catch (error: any) {
     console.error('[API team/create] Error:', error)

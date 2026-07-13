@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import {
-  Shield, Plus, KeyRound, ArrowRight, Loader2, Check, AlertCircle, Sparkles,
+  Shield, Plus, KeyRound, ArrowRight, Loader2, Check,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -16,16 +16,13 @@ type View = 'choose' | 'create' | 'join'
 
 export default function ChooseTeamPage() {
   const router = useRouter()
-  const { data: session, update } = useSession()
+  const { data: session } = useSession()
   const [view, setView] = useState<View>('choose')
   const [loading, setLoading] = useState(false)
 
-  // Form crear equipo
   const [teamName, setTeamName] = useState('')
   const [shortName, setShortName] = useState('')
   const [category, setCategory] = useState('')
-
-  // Form unirse con código
   const [inviteCode, setInviteCode] = useState('')
 
   const handleCreateTeam = async () => {
@@ -49,18 +46,13 @@ export default function ChooseTeamPage() {
         const err = await res.json()
         throw new Error(err.error || 'Error al crear equipo')
       }
-      const data = await res.json()
-      // Refrescar sesión para que el JWT tome el nuevo teamId y role
-      // NextAuth v4: update() dispara el callback jwt con trigger='update'
-      await update({ forceRefresh: true })
       toast.success('¡Equipo creado!')
-      // Pequeño delay para que el JWT se propague a la sesión
-      await new Promise(r => setTimeout(r, 800))
-      router.push('/onboarding')
-      router.refresh()
+      // FULL PAGE RELOAD - esto es clave para que el JWT se refresque
+      // router.push() hace navegación client-side y reutiliza el JWT viejo
+      // window.location.href fuerza una nueva request al server que refresca el JWT
+      window.location.href = '/onboarding'
     } catch (err: any) {
       toast.error(err.message)
-    } finally {
       setLoading(false)
     }
   }
@@ -81,21 +73,17 @@ export default function ChooseTeamPage() {
         const err = await res.json()
         throw new Error(err.error || 'Error al unirse')
       }
-      await update({ forceRefresh: true })
       toast.success('¡Te uniste al equipo!')
-      await new Promise(r => setTimeout(r, 800))
-      router.push('/')
-      router.refresh()
+      // FULL PAGE RELOAD
+      window.location.href = '/'
     } catch (err: any) {
       toast.error(err.message)
-    } finally {
       setLoading(false)
     }
   }
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-deportivo">
-      {/* Decoración */}
       <div className="absolute inset-0">
         <div className="absolute top-0 left-1/4 h-96 w-96 rounded-full bg-primary/20 blur-3xl" />
         <div className="absolute bottom-0 right-1/4 h-96 w-96 rounded-full bg-emerald-500/10 blur-3xl" />
@@ -112,9 +100,7 @@ export default function ChooseTeamPage() {
                 <Shield className="h-8 w-8 text-primary-foreground" />
               </div>
             </div>
-            <h1 className="text-2xl font-black tracking-tight mt-3 text-gradient-primary">
-              Futapp
-            </h1>
+            <h1 className="text-2xl font-black tracking-tight mt-3 text-gradient-primary">Futapp</h1>
           </div>
 
           {/* Vista: choose */}
@@ -123,12 +109,10 @@ export default function ChooseTeamPage() {
               <div className="text-center mb-6">
                 <h2 className="text-xl font-bold">¿Qué quieres hacer?</h2>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Crea un equipo nuevo o únete a uno existente con un código
+                  Crea un equipo nuevo o únete a uno existente
                 </p>
               </div>
-
               <div className="space-y-3">
-                {/* Crear equipo */}
                 <Card
                   className="border-primary/30 bg-gradient-to-br from-emerald-950/40 to-emerald-900/20 card-hover cursor-pointer"
                   onClick={() => setView('create')}
@@ -137,17 +121,13 @@ export default function ChooseTeamPage() {
                     <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/20 shrink-0">
                       <Plus className="h-6 w-6 text-primary" />
                     </div>
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1">
                       <h3 className="font-bold text-sm">Crear equipo nuevo</h3>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Serás el administrador del equipo
-                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Serás el administrador</p>
                     </div>
                     <ArrowRight className="h-4 w-4 text-muted-foreground" />
                   </CardContent>
                 </Card>
-
-                {/* Unirse con código */}
                 <Card
                   className="border-sky-500/30 bg-gradient-to-br from-sky-950/40 to-sky-900/20 card-hover cursor-pointer"
                   onClick={() => setView('join')}
@@ -156,21 +136,13 @@ export default function ChooseTeamPage() {
                     <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-sky-500/20 shrink-0">
                       <KeyRound className="h-6 w-6 text-sky-400" />
                     </div>
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1">
                       <h3 className="font-bold text-sm">Tengo código de invitación</h3>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Únete a un equipo existente
-                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Únete a un equipo existente</p>
                     </div>
                     <ArrowRight className="h-4 w-4 text-muted-foreground" />
                   </CardContent>
                 </Card>
-              </div>
-
-              <div className="mt-6 text-center">
-                <p className="text-xs text-muted-foreground">
-                  ¿Cómo funcionan los códigos? El administrador del equipo genera un link desde la sección Miembros y lo comparte por WhatsApp.
-                </p>
               </div>
             </div>
           )}
@@ -186,15 +158,13 @@ export default function ChooseTeamPage() {
                     </div>
                     <div>
                       <h2 className="font-bold text-base">Crear equipo nuevo</h2>
-                      <p className="text-xs text-muted-foreground">Configura los datos básicos</p>
+                      <p className="text-xs text-muted-foreground">Datos básicos del equipo</p>
                     </div>
                   </div>
-
                   <div className="space-y-3">
                     <div>
-                      <Label htmlFor="teamName">Nombre del equipo *</Label>
+                      <Label>Nombre del equipo *</Label>
                       <Input
-                        id="teamName"
                         value={teamName}
                         onChange={(e) => setTeamName(e.target.value)}
                         placeholder="Ej: Los Halcones FC"
@@ -202,9 +172,8 @@ export default function ChooseTeamPage() {
                       />
                     </div>
                     <div>
-                      <Label htmlFor="shortName">Sigla (3-4 letras) *</Label>
+                      <Label>Sigla (3-4 letras) *</Label>
                       <Input
-                        id="shortName"
                         value={shortName}
                         onChange={(e) => setShortName(e.target.value.toUpperCase())}
                         placeholder="Ej: HFC"
@@ -213,9 +182,8 @@ export default function ChooseTeamPage() {
                       />
                     </div>
                     <div>
-                      <Label htmlFor="category">Categoría *</Label>
+                      <Label>Categoría *</Label>
                       <Input
-                        id="category"
                         value={category}
                         onChange={(e) => setCategory(e.target.value)}
                         placeholder="Ej: Senior Amateur"
@@ -223,14 +191,8 @@ export default function ChooseTeamPage() {
                       />
                     </div>
                   </div>
-
                   <div className="flex gap-2 mt-5">
-                    <Button
-                      variant="outline"
-                      onClick={() => setView('choose')}
-                      className="flex-1"
-                      disabled={loading}
-                    >
+                    <Button variant="outline" onClick={() => setView('choose')} className="flex-1" disabled={loading}>
                       Volver
                     </Button>
                     <Button
@@ -238,17 +200,7 @@ export default function ChooseTeamPage() {
                       disabled={loading || !teamName || !shortName || !category}
                       className="flex-1 bg-gradient-primary"
                     >
-                      {loading ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                          Creando…
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="h-4 w-4 mr-1" />
-                          Crear equipo
-                        </>
-                      )}
+                      {loading ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" />Creando…</> : <><Plus className="h-4 w-4 mr-1" />Crear equipo</>}
                     </Button>
                   </div>
                 </CardContent>
@@ -267,33 +219,22 @@ export default function ChooseTeamPage() {
                     </div>
                     <div>
                       <h2 className="font-bold text-base">Unirse con código</h2>
-                      <p className="text-xs text-muted-foreground">Pega el código o link de invitación</p>
+                      <p className="text-xs text-muted-foreground">Pega el código o link</p>
                     </div>
                   </div>
-
                   <div className="space-y-3">
                     <div>
-                      <Label htmlFor="inviteCode">Código o link de invitación *</Label>
+                      <Label>Código o link de invitación *</Label>
                       <Input
-                        id="inviteCode"
                         value={inviteCode}
                         onChange={(e) => setInviteCode(e.target.value)}
-                        placeholder="Pega aquí el código o link completo"
+                        placeholder="Pega aquí el código o link"
                         className="bg-card/50 font-mono text-sm"
                       />
-                      <p className="text-[10px] text-muted-foreground mt-1.5">
-                        El código se ve así: <code className="text-primary">abc-123-xyz</code> o pega el link completo que te enviaron
-                      </p>
                     </div>
                   </div>
-
                   <div className="flex gap-2 mt-5">
-                    <Button
-                      variant="outline"
-                      onClick={() => setView('choose')}
-                      className="flex-1"
-                      disabled={loading}
-                    >
+                    <Button variant="outline" onClick={() => setView('choose')} className="flex-1" disabled={loading}>
                       Volver
                     </Button>
                     <Button
@@ -301,17 +242,7 @@ export default function ChooseTeamPage() {
                       disabled={loading || !inviteCode}
                       className="flex-1 bg-gradient-to-r from-sky-500 to-sky-600"
                     >
-                      {loading ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                          Uniéndose…
-                        </>
-                      ) : (
-                        <>
-                          <Check className="h-4 w-4 mr-1" />
-                          Unirse al equipo
-                        </>
-                      )}
+                      {loading ? <><Loader2 className="h-4 w-4 mr-1 animate-spin" />Uniéndose…</> : <><Check className="h-4 w-4 mr-1" />Unirse</>}
                     </Button>
                   </div>
                 </CardContent>
