@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/generate-recurring",
       "schedule": "0 5 1 * *"
+    },
+    {
+      "path": "/api/cron/penalize",
+      "schedule": "*/30 * * * *"
     }
   ]
 }

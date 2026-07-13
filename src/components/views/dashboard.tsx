@@ -85,7 +85,8 @@ export function DashboardView({ teamName, teamShortName, currentRole, initialDat
   const isAdmin = userRole === 'ADMIN'
 
   const menuItems = [
-    { href: '/mi-perfil', icon: Shield, label: 'Mi Perfil', desc: 'Foto y datos', iconBg: 'bg-primary/20 text-primary' },
+    { href: '/mi-perfil', icon: Shield, label: 'Mi Perfil', desc: 'Foto y stats', iconBg: 'bg-primary/20 text-primary' },
+    { href: '/ranking', icon: Trophy, label: 'Ranking', desc: 'Niveles y puntos', iconBg: 'bg-amber-500/20 text-amber-400' },
     { href: '/calendario', icon: Calendar, label: 'Calendario', desc: 'Entrenamientos y partidos', iconBg: 'bg-sky-500/20 text-sky-400' },
     { href: '/plantilla', icon: Users, label: 'Plantilla', desc: 'Jugadores y perfiles', iconBg: 'bg-emerald-500/20 text-emerald-400' },
     { href: '/convocatorias', icon: ClipboardList, label: 'Convocatorias', desc: 'Alineaciones tácticas', iconBg: 'bg-violet-500/20 text-violet-400' },
