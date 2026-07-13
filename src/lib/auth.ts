@@ -92,7 +92,11 @@ export const authOptions: NextAuthOptions = {
       }
 
       // Verificar membership en DB
-      if (user || trigger === 'update' || (token.userId && !token.teamId) || token.membershipStatus === 'PENDIENTE') {
+      // Refrescar si: primer login, update explícito, sin teamId, PENDIENTE, o TTL expirado (5 min)
+  const TTL = 5 * 60 * 1000 // 5 minutos
+  const needsRefresh = !token.lastRefresh || (Date.now() - token.lastRefresh) > TTL
+  if (user || trigger === 'update' || (token.userId && !token.teamId) || token.membershipStatus === 'PENDIENTE' || needsRefresh) {
+    token.lastRefresh = Date.now()
         console.log('[Auth:jwt] Checking membership for user:', token.userId)
         try {
           const { supabase } = await import('@/lib/supabase-server')
@@ -200,5 +204,6 @@ declare module 'next-auth/jwt' {
     teamId?: string | null
     membershipStatus?: string | null
     onboardingCompleted?: boolean
+    lastRefresh?: number
   }
 }

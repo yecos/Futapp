@@ -72,7 +72,7 @@ export async function POST(
       return NextResponse.json({ error: 'Este cobro no aplica a este jugador' }, { status: 400 })
     }
 
-    const formData = await req.formData()
+    // Reutilizar el formData ya leído arriba
     const file = formData.get('file') as File
     if (!file) {
       return NextResponse.json({ error: 'Archivo no proporcionado' }, { status: 400 })

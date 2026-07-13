@@ -83,7 +83,15 @@ export async function GET(req: NextRequest) {
       filtered = []
     }
 
-    return NextResponse.json(filtered)
+    const converted = filtered.map((p: any) => ({
+    ...p,
+    amount: Number(p.amount),
+    receipts: (p.receipts || []).map((r: any) => ({
+      ...r,
+      amount: r.amount ? Number(r.amount) : null,
+    })),
+  }))
+  return NextResponse.json(converted)
   } catch (error: any) {
     console.error('[API payments GET] Error:', error)
     return NextResponse.json(

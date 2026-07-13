@@ -31,7 +31,7 @@ interface DashboardData {
     type: string
   }
   topScorer?: {
-    name: string
+    fullName: string
     goals: number
     jerseyNumber: number
   }
@@ -176,7 +176,7 @@ export function DashboardView({ teamName, teamShortName, currentRole }: Dashboar
               <span className="text-xs font-bold uppercase tracking-wider text-amber-400">Top Goleador</span>
               {data?.topScorer ? (
                 <div className="mt-3">
-                  <p className="font-bold text-sm">{data.topScorer.name}</p>
+                  <p className="font-bold text-sm">{data.topScorer.fullName}</p>
                   <p className="text-2xl font-black text-amber-400 mt-1">
                     <AnimatedCounter value={data.topScorer.goals} /> goles
                   </p>

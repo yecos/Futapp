@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase-server'
 
 export async function GET(req: NextRequest) {
-  const authHeader = req.headers.get('authorization')
-  const expectedSecret = `Bearer ${process.env.CRON_SECRET}`
-  if (authHeader !== expectedSecret) {
+  // Verificar que viene de Vercel Cron
+  const isCron = req.headers.get('x-vercel-cron') === '1'
+  if (!isCron && process.env.NODE_ENV === 'production') {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
   }
 

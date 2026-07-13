@@ -10,7 +10,7 @@ export default async function InvitePage({
   const { data: invite } = await supabase
     .from('InviteToken')
     .select(`
-      *,
+      token, role, teamId, usedBy, expiresAt,
       team:Team(name)
     `)
     .eq('token', token)

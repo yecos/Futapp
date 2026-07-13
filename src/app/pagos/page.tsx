@@ -21,7 +21,7 @@ export default async function PagosPage() {
     .eq('id', teamId)
     .single()
 
-  if (!team) redirect('/login')
+  if (!team) redirect('/choose-team')
 
   return <PlayerPaymentsView team={team} />
 }
