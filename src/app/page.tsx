@@ -8,7 +8,7 @@ export default async function HomePage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
 
-  // Consultar membership directamente desde la DB (no del JWT que puede estar desactualizado)
+  // Consultar membership directamente desde la DB (NO del JWT)
   const { data: memberships } = await supabase
     .from('TeamMembership')
     .select('role, status, teamId, team:Team(name, shortName, onboardingCompleted)')
