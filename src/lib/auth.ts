@@ -4,15 +4,10 @@ import { SupabaseRestAdapter } from '@/lib/supabase-auth-adapter'
 import { randomUUID } from 'crypto'
 
 /**
- * Configuración de NextAuth con Google + Supabase REST API Adapter.
- *
- * Flujo multi-tenant:
- * 1. Usuario se loguea con Google
- * 2. Si ya tiene membership activo → va directo al dashboard
- * 3. Si no tiene membership → va a /choose-team
- *    - Crear equipo nuevo (se hace ADMIN)
- *    - Ingresar código de invitación (se une con el rol del invite)
+ * Configuración de NextAuth con Google + Supabase REST API.
+ * Con logging detallado para debugging.
  */
+
 export const authOptions: NextAuthOptions = {
   adapter: SupabaseRestAdapter(),
   session: { strategy: 'jwt' },
@@ -27,124 +22,133 @@ export const authOptions: NextAuthOptions = {
     error: '/login',
   },
   callbacks: {
+    async signIn({ user, account, profile }) {
+      console.log('[Auth:signIn] User:', user.email, 'Account provider:', account?.provider)
+      return true
+    },
+
     async jwt({ token, user, trigger }) {
-      // En el primer login (user viene del adapter)
+      console.log('[Auth:jwt] Start. user:', !!user, 'trigger:', trigger, 'userId:', token.userId)
+
       if (user) {
         token.userId = user.id
+        console.log('[Auth:jwt] Set userId:', user.id)
 
-        // Verificar si viene de un invite link (URL directa)
+        // Verificar invite link
         const callbackUrl = token.callbackUrl as string | undefined
         const inviteMatch = callbackUrl?.match(/\/invite\/([a-f0-9-]+)/)
         if (inviteMatch) {
-          const inviteToken = inviteMatch[1]
+          console.log('[Auth:jwt] Invite link detected:', inviteMatch[1])
+          try {
+            const { supabase } = await import('@/lib/supabase-server')
+            const { data: invite } = await supabase
+              .from('InviteToken')
+              .select('*')
+              .eq('token', inviteMatch[1])
+              .is('usedBy', null)
+              .gt('expiresAt', new Date().toISOString())
+              .single()
+
+            if (invite) {
+              console.log('[Auth:jwt] Invite found, creating membership')
+              const { data: existing } = await supabase
+                .from('TeamMembership')
+                .select('id')
+                .eq('userId', user.id)
+                .eq('teamId', invite.teamId)
+                .single()
+
+              if (existing) {
+                await supabase.from('TeamMembership').update({
+                  role: invite.role, status: 'ACTIVO',
+                  joinedAt: new Date().toISOString(),
+                }).eq('id', existing.id)
+              } else {
+                await supabase.from('TeamMembership').insert({
+                  id: randomUUID(), userId: user.id, teamId: invite.teamId,
+                  role: invite.role, status: 'ACTIVO',
+                  joinedAt: new Date().toISOString(),
+                })
+              }
+
+              await supabase.from('InviteToken').update({
+                usedBy: user.id, usedAt: new Date().toISOString(),
+              }).eq('id', invite.id)
+
+              const { data: team } = await supabase
+                .from('Team').select('onboardingCompleted').eq('id', invite.teamId).single()
+
+              token.role = invite.role
+              token.teamId = invite.teamId
+              token.membershipStatus = 'ACTIVO'
+              token.onboardingCompleted = team?.onboardingCompleted ?? false
+              console.log('[Auth:jwt] Invite processed, returning token')
+              return token
+            }
+          } catch (e: any) {
+            console.error('[Auth:jwt] Invite error:', e.message)
+          }
+        }
+      }
+
+      // Verificar membership en DB
+      if (user || trigger === 'update' || (token.userId && !token.teamId) || token.membershipStatus === 'PENDIENTE') {
+        console.log('[Auth:jwt] Checking membership for user:', token.userId)
+        try {
           const { supabase } = await import('@/lib/supabase-server')
 
-          const { data: invite } = await supabase
-            .from('InviteToken')
-            .select('*')
-            .eq('token', inviteToken)
-            .is('usedBy', null)
-            .gt('expiresAt', new Date().toISOString())
-            .single()
-
-          if (invite) {
-            const { data: existing } = await supabase
-              .from('TeamMembership')
-              .select('id')
-              .eq('userId', user.id)
-              .eq('teamId', invite.teamId)
-              .single()
-
-            if (existing) {
-              await supabase
-                .from('TeamMembership')
-                .update({
-                  role: invite.role,
-                  status: 'ACTIVO',
-                  joinedAt: new Date().toISOString(),
-                })
-                .eq('id', existing.id)
-            } else {
-              await supabase
-                .from('TeamMembership')
-                .insert({
-                  id: randomUUID(),
-                  userId: user.id,
-                  teamId: invite.teamId,
-                  role: invite.role,
-                  status: 'ACTIVO',
-                  joinedAt: new Date().toISOString(),
-                })
-            }
-
-            await supabase
-              .from('InviteToken')
-              .update({
-                usedBy: user.id,
-                usedAt: new Date().toISOString(),
-              })
-              .eq('id', invite.id)
-
-            const { data: team } = await supabase
-              .from('Team')
-              .select('onboardingCompleted')
-              .eq('id', invite.teamId)
-              .single()
-
-            token.role = invite.role
-            token.teamId = invite.teamId
-            token.membershipStatus = 'ACTIVO'
-            token.onboardingCompleted = team?.onboardingCompleted ?? false
-            return token
-          }
-        }
-      }
-
-      // Solo verificar membership desde DB en casos específicos para evitar timeouts
-      if (user || trigger === 'update' || (token.userId && !token.teamId) || token.membershipStatus === 'PENDIENTE') {
-        const { supabase } = await import('@/lib/supabase-server')
-
-        // Buscar membership ACTIVO (usar limit(1) para evitar errores)
-        const { data: memberships } = await supabase
-          .from('TeamMembership')
-          .select('role, status, teamId, team:Team(onboardingCompleted)')
-          .eq('userId', token.userId)
-          .eq('status', 'ACTIVO')
-          .order('joinedAt', { ascending: false })
-          .limit(1)
-
-        const membership = memberships?.[0]
-
-        if (membership) {
-          token.role = membership.role
-          token.teamId = membership.teamId
-          token.membershipStatus = membership.status
-          token.onboardingCompleted = (membership.team as any)?.onboardingCompleted ?? false
-        } else {
-          // Sin membership ACTIVO → verificar si tiene PENDIENTE
-          const { data: pendingMemberships } = await supabase
+          const { data: memberships, error: memError } = await supabase
             .from('TeamMembership')
-            .select('teamId')
+            .select('role, status, teamId, team:Team(onboardingCompleted)')
             .eq('userId', token.userId)
-            .eq('status', 'PENDIENTE')
+            .eq('status', 'ACTIVO')
+            .order('joinedAt', { ascending: false })
             .limit(1)
 
-          if (pendingMemberships && pendingMemberships.length > 0) {
-            token.role = 'SEGUIDOR'
-            token.teamId = pendingMemberships[0].teamId
-            token.membershipStatus = 'PENDIENTE'
-            token.onboardingCompleted = false
-          } else {
-            // Sin membership → /choose-team
-            token.role = null
-            token.teamId = null
-            token.membershipStatus = null
-            token.onboardingCompleted = false
+          if (memError) {
+            console.error('[Auth:jwt] Membership query error:', memError.message)
           }
+
+          const membership = memberships?.[0]
+          console.log('[Auth:jwt] Membership found:', !!membership)
+
+          if (membership) {
+            token.role = membership.role
+            token.teamId = membership.teamId
+            token.membershipStatus = membership.status
+            token.onboardingCompleted = (membership.team as any)?.onboardingCompleted ?? false
+            console.log('[Auth:jwt] Token updated: role=', token.role, 'teamId=', token.teamId)
+          } else {
+            const { data: pending } = await supabase
+              .from('TeamMembership')
+              .select('teamId')
+              .eq('userId', token.userId)
+              .eq('status', 'PENDIENTE')
+              .limit(1)
+
+            if (pending && pending.length > 0) {
+              token.role = 'SEGUIDOR'
+              token.teamId = pending[0].teamId
+              token.membershipStatus = 'PENDIENTE'
+              token.onboardingCompleted = false
+              console.log('[Auth:jwt] Pending membership found')
+            } else {
+              token.role = null
+              token.teamId = null
+              token.membershipStatus = null
+              token.onboardingCompleted = false
+              console.log('[Auth:jwt] No membership found')
+            }
+          }
+        } catch (e: any) {
+          console.error('[Auth:jwt] DB error:', e.message)
         }
       }
+
+      console.log('[Auth:jwt] Done. role:', token.role, 'teamId:', token.teamId)
       return token
     },
+
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.userId as string
@@ -158,10 +162,16 @@ export const authOptions: NextAuthOptions = {
   },
   events: {
     async signIn(message) {
-      console.log('[Auth] Sign in:', message.user.email)
+      console.log('[Auth:event] Sign in success:', message.user.email)
+    },
+    async createUser(message) {
+      console.log('[Auth:event] User created:', message.user.email)
+    },
+    async linkAccount(message) {
+      console.log('[Auth:event] Account linked:', message.account.provider)
     },
   },
-  debug: process.env.NODE_ENV === 'development',
+  debug: true,
 }
 
 declare module 'next-auth' {
