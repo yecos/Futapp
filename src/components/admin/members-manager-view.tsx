@@ -75,6 +75,8 @@ export function MembersManagerView({
       const updated = await res.json()
       setMemberships(memberships.map((m) => (m.id === membershipId ? { ...m, ...updated } : m)))
       toast.success('Actualizado')
+      // Full reload para que el JWT se refresque con el nuevo rol
+      setTimeout(() => window.location.reload(), 800)
     } catch (err: any) {
       toast.error(err.message)
     }

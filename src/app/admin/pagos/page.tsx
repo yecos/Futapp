@@ -7,10 +7,20 @@ import { AdminPaymentsView } from '@/components/payments/admin-payments-view'
 export default async function AdminPagosPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
-  if (!session.user.teamId) redirect('/choose-team')
-  if (session.user.role !== 'ADMIN') redirect('/')
 
-  const teamId = session.user.teamId
+  // Verificar rol desde DB (no del JWT que puede estar desactualizado)
+  const { data: memberships } = await supabase
+    .from('TeamMembership')
+    .select('role, teamId')
+    .eq('userId', session.user.id)
+    .eq('status', 'ACTIVO')
+    .limit(1)
+
+  const membership = memberships?.[0]
+  if (!membership?.teamId) redirect('/choose-team')
+  if (membership.role !== 'ADMIN') redirect('/')
+
+  const teamId = membership.teamId
 
   const { data: payments } = await supabase
     .from('Payment')

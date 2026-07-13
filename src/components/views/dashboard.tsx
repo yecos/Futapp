@@ -16,6 +16,7 @@ import { useEffect, useState } from 'react'
 interface DashboardViewProps {
   teamName: string
   teamShortName: string
+  currentRole?: string
 }
 
 interface DashboardData {
@@ -43,7 +44,7 @@ interface DashboardData {
   }>
 }
 
-export function DashboardView({ teamName, teamShortName }: DashboardViewProps) {
+export function DashboardView({ teamName, teamShortName, currentRole }: DashboardViewProps) {
   const { data: session, status } = useSession()
   const [data, setData] = useState<DashboardData | null>(null)
   const [mounted, setMounted] = useState(false)
@@ -75,7 +76,8 @@ export function DashboardView({ teamName, teamShortName }: DashboardViewProps) {
   }
 
   const userName = session?.user?.name || 'Usuario'
-  const userRole = session?.user?.role || 'SEGUIDOR'
+  // Usar el rol de la DB (pasado como prop) si está disponible, sino del JWT
+  const userRole = currentRole || session?.user?.role || 'SEGUIDOR'
   const isAdmin = userRole === 'ADMIN'
 
   const menuItems = [
