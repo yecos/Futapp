@@ -100,53 +100,48 @@ export const authOptions: NextAuthOptions = {
         }
       }
 
-      // Siempre verificar el membership actual cuando:
-      // - Es primer login (user presente)
-      // - El token se está actualizando (trigger === 'update')
-      // - No hay teamId en el token (para refrescar usuarios sin team)
-      // - El status es PENDIENTE (verificar si fue aprobado/rechazado/eliminado)
-      // - Se recibió forceRefresh (desde update({ forceRefresh: true }))
-      const forceRefresh = (token as any).forceRefresh === true || (token as any).session?.forceRefresh === true
-      if (user || trigger === 'update' || forceRefresh || (token.userId && !token.teamId) || token.membershipStatus === 'PENDIENTE') {
+      // SIEMPRE verificar el membership desde la DB (no confiar en el JWT cacheado)
+      // Esto es más costoso pero garantiza consistencia
+      if (token.userId) {
         const { supabase } = await import('@/lib/supabase-server')
 
-        // Buscar membership ACTIVO
-        const { data: membership } = await supabase
+        // Buscar membership ACTIVO (usar limit(1) para evitar errores)
+        const { data: memberships } = await supabase
           .from('TeamMembership')
-          .select('*, team!inner(*)')
+          .select('role, status, teamId, team:Team(onboardingCompleted)')
           .eq('userId', token.userId)
           .eq('status', 'ACTIVO')
-          .single()
+          .order('joinedAt', { ascending: false })
+          .limit(1)
+
+        const membership = memberships?.[0]
 
         if (membership) {
           token.role = membership.role
           token.teamId = membership.teamId
           token.membershipStatus = membership.status
-          token.onboardingCompleted = (membership.team as any).onboardingCompleted
+          token.onboardingCompleted = (membership.team as any)?.onboardingCompleted ?? false
         } else {
-          // Verificar si tiene membership PENDIENTE (aún esperando aprobación)
-          const { data: pendingMembership } = await supabase
+          // Sin membership ACTIVO → verificar si tiene PENDIENTE
+          const { data: pendingMemberships } = await supabase
             .from('TeamMembership')
             .select('teamId')
             .eq('userId', token.userId)
             .eq('status', 'PENDIENTE')
-            .single()
+            .limit(1)
 
-          if (pendingMembership) {
+          if (pendingMemberships && pendingMemberships.length > 0) {
             token.role = 'SEGUIDOR'
-            token.teamId = pendingMembership.teamId
+            token.teamId = pendingMemberships[0].teamId
             token.membershipStatus = 'PENDIENTE'
+            token.onboardingCompleted = false
           } else {
+            // Sin membership → /choose-team
             token.role = null
             token.teamId = null
             token.membershipStatus = null
             token.onboardingCompleted = false
           }
-        }
-
-        // Limpiar el flag de forceRefresh para que no se quede en loop
-        if (forceRefresh) {
-          delete (token as any).forceRefresh
         }
       }
       return token
