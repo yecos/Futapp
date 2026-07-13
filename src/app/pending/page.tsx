@@ -1,18 +1,15 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useSession } from 'next-auth/react'
-import { signOut } from 'next-auth/react'
-import { Shield, Clock, LogOut, ArrowRight, Plus } from 'lucide-react'
+import { useSession, signOut } from 'next-auth/react'
+import { Clock, LogOut, ArrowRight, Plus } from 'lucide-react'
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation' 
 import { toast } from 'sonner'
 
 export default function PendingPage() {
   const router = useRouter()
   const { data: session, update } = useSession()
   const [leaving, setLeaving] = useState(false)
-  const router = useRouter()
 
   useEffect(() => {
     // Refrescar sesión al montar para detectar si fue aprobado
