@@ -6,6 +6,7 @@ import { ArrowLeft, Users, Search } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import Link from 'next/link'
 import { useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 
 interface PlayerData {
   id: string
@@ -47,6 +48,7 @@ const POS_COLORS: Record<string, string> = {
 }
 
 export function RosterView({ players }: { players: PlayerData[] }) {
+  const router = useRouter()
   const [search, setSearch] = useState('')
 
   const filtered = useMemo(() => {
@@ -117,7 +119,7 @@ export function RosterView({ players }: { players: PlayerData[] }) {
         {/* Grid de jugadores */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {filtered.map((player, i) => (
-            <Card key={player.id} className="border-white/5 bg-gradient-card card-hover animate-fade-in-up" style={{ animationDelay: `${i * 50}ms` }}>
+            <Card key={player.id} onClick={() => router.push(`/plantilla/${player.id}`)} className="border-white/5 bg-gradient-card card-hover animate-fade-in-up cursor-pointer" style={{ animationDelay: `${i * 50}ms` }}>
               <CardContent className="p-3">
                 <div className="flex items-center gap-2 mb-2">
                   <div className={`flex h-10 w-10 items-center justify-center rounded-full text-white font-bold text-sm ${POS_COLORS[player.primaryPosition]}`}>
