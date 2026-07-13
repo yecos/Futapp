@@ -105,7 +105,9 @@ export const authOptions: NextAuthOptions = {
       // - El token se está actualizando (trigger === 'update')
       // - No hay teamId en el token (para refrescar usuarios sin team)
       // - El status es PENDIENTE (verificar si fue aprobado/rechazado/eliminado)
-      if (user || trigger === 'update' || (token.userId && !token.teamId) || token.membershipStatus === 'PENDIENTE') {
+      // - Se recibió forceRefresh (desde update({ forceRefresh: true }))
+      const forceRefresh = (token as any).forceRefresh === true || (token as any).session?.forceRefresh === true
+      if (user || trigger === 'update' || forceRefresh || (token.userId && !token.teamId) || token.membershipStatus === 'PENDIENTE') {
         const { supabase } = await import('@/lib/supabase-server')
 
         // Buscar membership ACTIVO
@@ -131,17 +133,20 @@ export const authOptions: NextAuthOptions = {
             .single()
 
           if (pendingMembership) {
-            // Todavía pendiente
             token.role = 'SEGUIDOR'
             token.teamId = pendingMembership.teamId
             token.membershipStatus = 'PENDIENTE'
           } else {
-            // Sin membership → va a /choose-team
             token.role = null
             token.teamId = null
             token.membershipStatus = null
             token.onboardingCompleted = false
           }
+        }
+
+        // Limpiar el flag de forceRefresh para que no se quede en loop
+        if (forceRefresh) {
+          delete (token as any).forceRefresh
         }
       }
       return token

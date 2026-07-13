@@ -50,8 +50,12 @@ export default function ChooseTeamPage() {
         throw new Error(err.error || 'Error al crear equipo')
       }
       const data = await res.json()
-      await update() // refrescar sesión con nuevo teamId
+      // Refrescar sesión para que el JWT tome el nuevo teamId y role
+      // NextAuth v4: update() dispara el callback jwt con trigger='update'
+      await update({ forceRefresh: true })
       toast.success('¡Equipo creado!')
+      // Pequeño delay para que el JWT se propague a la sesión
+      await new Promise(r => setTimeout(r, 800))
       router.push('/onboarding')
       router.refresh()
     } catch (err: any) {
@@ -77,8 +81,9 @@ export default function ChooseTeamPage() {
         const err = await res.json()
         throw new Error(err.error || 'Error al unirse')
       }
-      await update()
+      await update({ forceRefresh: true })
       toast.success('¡Te uniste al equipo!')
+      await new Promise(r => setTimeout(r, 800))
       router.push('/')
       router.refresh()
     } catch (err: any) {
