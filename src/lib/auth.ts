@@ -100,9 +100,8 @@ export const authOptions: NextAuthOptions = {
         }
       }
 
-      // SIEMPRE verificar el membership desde la DB (no confiar en el JWT cacheado)
-      // Esto es más costoso pero garantiza consistencia
-      if (token.userId) {
+      // Solo verificar membership desde DB en casos específicos para evitar timeouts
+      if (user || trigger === 'update' || (token.userId && !token.teamId) || token.membershipStatus === 'PENDIENTE') {
         const { supabase } = await import('@/lib/supabase-server')
 
         // Buscar membership ACTIVO (usar limit(1) para evitar errores)
