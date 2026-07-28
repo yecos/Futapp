@@ -5,24 +5,34 @@ import { randomUUID } from 'crypto'
 
 /**
  * Configuración de NextAuth con Google + Supabase REST API.
- * Con logging detallado para debugging.
+ *
+ * IMPORTANTE: Se construye de forma lazy vía `getAuthOptions()` para evitar
+ * que el build de Next.js falle cuando las variables de entorno de Google
+ * OAuth o Supabase no están disponibles (ej. en CI/local sin env vars).
+ *
+ * `authOptions` es un Proxy que delega a la instancia construida lazy,
+ * manteniendo compatibilidad con el código existente que lo importa.
  */
 
-export const authOptions: NextAuthOptions = {
-  adapter: SupabaseRestAdapter(),
-  session: { strategy: 'jwt' },
-  providers: [
-    GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-    }),
-  ],
-  pages: {
-    signIn: '/login',
-    error: '/login',
-  },
-  callbacks: {
-    async signIn({ user, account, profile }) {
+let _authOptions: NextAuthOptions | null = null
+
+export function getAuthOptions(): NextAuthOptions {
+  if (_authOptions) return _authOptions
+  _authOptions = {
+    adapter: SupabaseRestAdapter(),
+    session: { strategy: 'jwt' },
+    providers: [
+      GoogleProvider({
+        clientId: process.env.GOOGLE_CLIENT_ID || 'placeholder-client-id',
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET || 'placeholder-client-secret',
+      }),
+    ],
+    pages: {
+      signIn: '/login',
+      error: '/login',
+    },
+    callbacks: {
+      async signIn({ user, account, profile }) {
       console.log('[Auth:signIn] User:', user.email, 'Account provider:', account?.provider)
       return true
     },
@@ -176,7 +186,21 @@ export const authOptions: NextAuthOptions = {
     },
   },
   debug: process.env.NODE_ENV === 'development',
+  }
+  return _authOptions
 }
+
+/**
+ * Proxy lazy para compatibilidad con código existente que importa `authOptions`.
+ * Delega todas las accesiones a la instancia construida on-demand.
+ */
+export const authOptions: NextAuthOptions = new Proxy({} as NextAuthOptions, {
+  get(_target, prop) {
+    const opts = getAuthOptions()
+    const value = (opts as any)[prop]
+    return typeof value === 'function' ? value.bind(opts) : value
+  },
+})
 
 declare module 'next-auth' {
   interface Session {

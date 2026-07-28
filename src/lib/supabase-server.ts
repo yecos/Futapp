@@ -6,6 +6,11 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js'
  *
  * IMPORTANTE: Este cliente NUNCA debe exponerse al cliente (browser).
  * Para el cliente, usar src/lib/supabase-client.ts con la anon key.
+ *
+ * NOTA: La inicialización es lazy — solo se crea el cliente cuando se accede
+ * a la propiedad `supabase` o se llama a `getSupabaseServer()`. Esto evita
+ * que el build de Next.js falle cuando las variables de entorno no están
+ * disponibles (ej. durante el `next build` en CI/local sin env vars).
  */
 
 let _client: SupabaseClient | null = null
@@ -37,6 +42,14 @@ export function getSupabaseServer(): SupabaseClient {
 }
 
 /**
- * Alias corto para usar en el código.
+ * Proxy lazy: el cliente se crea solo cuando se accede a una propiedad.
+ * Esto permite que `import { supabase } from '@/lib/supabase-server'`
+ * funcione durante el build sin requerir variables de entorno.
  */
-export const supabase = getSupabaseServer()
+export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
+  get(_target, prop) {
+    const client = getSupabaseServer()
+    const value = (client as any)[prop]
+    return typeof value === 'function' ? value.bind(client) : value
+  },
+})
