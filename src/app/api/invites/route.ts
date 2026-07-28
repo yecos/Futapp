@@ -21,7 +21,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Solo el admin puede invitar' }, { status: 403 })
     }
 
-    const teamId = session.user.teamId!
+    const teamId = session.user.teamId
+    if (!teamId) {
+      return NextResponse.json({ error: 'Sin equipo asignado' }, { status: 400 })
+    }
     const body = await req.json()
     const parsed = createInviteSchema.safeParse(body)
     if (!parsed.success) {
@@ -70,7 +73,10 @@ export async function GET() {
       return NextResponse.json({ error: 'Solo el admin' }, { status: 403 })
     }
 
-    const teamId = session.user.teamId!
+    const teamId = session.user.teamId
+    if (!teamId) {
+      return NextResponse.json({ error: 'Sin equipo asignado' }, { status: 400 })
+    }
     const { data: invites, error } = await supabase
       .from('InviteToken')
       .select('*')

@@ -1,7 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
+import { z } from 'zod'
 import { authOptions } from '@/lib/auth'
 import { supabase } from '@/lib/supabase-server'
+
+const onboardingSchema = z.object({
+  primaryColor: z.string().regex(/^#[0-9a-f]{6}$/i).default('#16a34a'),
+  foundedYear: z.number().int().min(1900).max(new Date().getFullYear() + 1).default(new Date().getFullYear()),
+  bankName: z.string().min(2).max(100).default('Bancolombia'),
+  accountType: z.enum(['Ahorros', 'Corriente']).default('Ahorros'),
+  accountNumber: z.string().min(5).max(30),
+  accountHolder: z.string().min(2).max(100),
+  paymentInstructions: z.string().max(500).optional().default(''),
+})
 
 /**
  * POST /api/team/onboarding
@@ -38,17 +49,25 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
+    const parsed = onboardingSchema.safeParse(body)
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Datos inválidos', details: parsed.error.flatten() },
+        { status: 400 }
+      )
+    }
+    const data = parsed.data
 
     const { error } = await supabase
       .from('Team')
       .update({
-        primaryColor: body.primaryColor || '#16a34a',
-        foundedYear: body.foundedYear || new Date().getFullYear(),
-        bankName: body.bankName || 'Bancolombia',
-        accountType: body.accountType || 'Ahorros',
-        accountNumber: body.accountNumber,
-        accountHolder: body.accountHolder,
-        paymentInstructions: body.paymentInstructions || '',
+        primaryColor: data.primaryColor,
+        foundedYear: data.foundedYear,
+        bankName: data.bankName,
+        accountType: data.accountType,
+        accountNumber: data.accountNumber,
+        accountHolder: data.accountHolder,
+        paymentInstructions: data.paymentInstructions,
         onboardingCompleted: true,
         updatedAt: new Date().toISOString(),
       })

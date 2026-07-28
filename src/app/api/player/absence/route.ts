@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     // Buscar player
     const { data: player } = await supabase
       .from('Player')
-      .select('id, streak')
+      .select('id, streak, trainingsTotal')
       .eq('userId', session.user.id)
       .single()
 

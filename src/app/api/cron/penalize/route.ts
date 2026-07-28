@@ -37,7 +37,7 @@ export async function GET(req: NextRequest) {
       // Obtener todos los jugadores del equipo
       const { data: players } = await supabase
         .from('Player')
-        .select('id, statPoints, totalPointsEarned, streak, maxStreak, fullName')
+        .select('id, statPoints, totalPointsEarned, streak, maxStreak, fullName, trainingsTotal, userId')
         .eq('teamId', event.teamId)
 
       if (!players) continue

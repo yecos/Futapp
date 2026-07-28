@@ -297,6 +297,18 @@ model Player {
   trainingsAttended Int @default(0)
   trainingsTotal   Int @default(0)
 
+  // RPG / Gamificación (v2.1)
+  statPoints         Int @default(0)  // puntos disponibles para distribuir
+  totalPointsEarned  Int @default(0)  // total histórico
+  streak             Int @default(0)  // racha actual de check-ins
+  maxStreak          Int @default(0)  // racha máxima
+  basePAC            Int @default(0)  // Pace
+  baseSHO            Int @default(0)  // Shooting
+  basePAS            Int @default(0)  // Passing
+  baseDRI            Int @default(0)  // Dribbling
+  baseDEF            Int @default(0)  // Defending
+  basePHY            Int @default(0)  // Physical
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -307,6 +319,8 @@ model Player {
   callups    Callup[]
   matchStats MatchStat[]
   receipts   PaymentReceipt[]
+  checkIns   CheckIn[]
+  absences   Absence[]
 
   @@unique([teamId, jerseyNumber])
   @@index([teamId, status])
@@ -334,6 +348,8 @@ model Event {
   awayScore   Int?
   formation   String?
   createdBy   String
+  latitude    Float?   // GPS para check-in
+  longitude   Float?   // GPS para check-in
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -341,6 +357,8 @@ model Event {
   attendances Attendance[]
   callups     Callup[]
   matchStats  MatchStat[]
+  checkIns    CheckIn[]
+  absences    Absence[]
 
   @@index([teamId, date])
   @@index([teamId, status, date])
@@ -556,6 +574,45 @@ model Notification {
 
   @@index([userId, status])
   @@index([teamId, type, status])
+}
+
+// =====================================================
+// CHECK-IN & ABSENCES (Gamificación v2.1)
+// =====================================================
+
+model CheckIn {
+  id            String   @id @default(cuid())
+  eventId       String
+  playerId      String
+  userId        String
+  latitude      Float?
+  longitude     Float?
+  distance      Int?     // metros de distancia al evento
+  pointsAwarded Int      @default(0)
+  isLate        Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  event  Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, playerId])
+  @@index([playerId, createdAt])
+  @@index([eventId])
+}
+
+model Absence {
+  id        String   @id @default(cuid())
+  eventId   String
+  playerId  String
+  userId    String
+  reason    String   // Lesión, Trabajo, Familia, Estudio, Otro
+  createdAt DateTime @default(now())
+
+  event  Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, playerId])
+  @@index([playerId])
 }
 
 // =====================================================

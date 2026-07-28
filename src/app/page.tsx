@@ -19,8 +19,21 @@ export default async function HomePage() {
 
   const membership = memberships?.[0]
 
-  if (!membership || !membership.teamId) redirect('/choose-team')
-  if (membership.status === 'PENDIENTE') redirect('/pending')
+  // Si no tiene membership ACTIVO, verificar si tiene PENDIENTE
+  if (!membership || !membership.teamId) {
+    const { data: pending } = await supabase
+      .from('TeamMembership')
+      .select('teamId')
+      .eq('userId', session.user.id)
+      .eq('status', 'PENDIENTE')
+      .limit(1)
+
+    if (pending && pending.length > 0) {
+      redirect('/pending')
+    }
+    redirect('/choose-team')
+  }
+
   if (membership.role === 'ADMIN' && !(membership.team as any)?.onboardingCompleted) {
     redirect('/onboarding')
   }
@@ -72,8 +85,8 @@ export default async function HomePage() {
     totalEvents: totalEvents || 0,
     totalPayments: totalPayments || 0,
     totalRecaudado,
-    nextEvent: nextEvents?.[0] || null,
-    topScorer: topScorers?.[0] || null,
+    nextEvent: nextEvents?.[0] || undefined,
+    topScorer: topScorers?.[0] || undefined,
     recentResults,
   }
 

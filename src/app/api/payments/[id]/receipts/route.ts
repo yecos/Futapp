@@ -29,9 +29,12 @@ export async function POST(
     }
 
     const allowedRoles = ['ADMIN', 'ENTRENADOR', 'JUGADOR', 'ACUDIENTE']
-    if (!allowedRoles.includes(session.user.role)) {
+    if (!allowedRoles.includes(session.user.role || '')) {
       return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
     }
+
+    // Leer formData aquí para que esté disponible en todos los caminos
+    const formData = await req.formData()
 
     let playerId: string | undefined
     if (session.user.role === 'JUGADOR') {
@@ -50,7 +53,6 @@ export async function POST(
         .single()
       playerId = player?.id
     } else if (session.user.role === 'ADMIN' || session.user.role === 'ENTRENADOR') {
-      const formData = await req.formData()
       const explicitPlayerId = formData.get('playerId') as string
       if (explicitPlayerId) {
         const { data: player } = await supabase
@@ -72,7 +74,6 @@ export async function POST(
       return NextResponse.json({ error: 'Este cobro no aplica a este jugador' }, { status: 400 })
     }
 
-    // Reutilizar el formData ya leído arriba
     const file = formData.get('file') as File
     if (!file) {
       return NextResponse.json({ error: 'Archivo no proporcionado' }, { status: 400 })

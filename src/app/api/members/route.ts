@@ -20,7 +20,10 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Solo el admin' }, { status: 403 })
     }
 
-    const teamId = session.user.teamId!
+    const teamId = session.user.teamId
+    if (!teamId) {
+      return NextResponse.json({ error: 'Sin equipo asignado' }, { status: 400 })
+    }
     const body = await req.json()
     const parsed = updateMemberSchema.safeParse(body)
     if (!parsed.success) {

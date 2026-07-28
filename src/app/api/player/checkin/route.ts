@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
 
       if (distance > CHECKIN_RADIUS_METERS) {
         return NextResponse.json({
-          error: `Estás a ${Math.round(distance)}m del evento. Debes estar a menos de ${CHECKIN_RADIUS_METETERS}m.`,
+          error: `Estás a ${Math.round(distance)}m del evento. Debes estar a menos de ${CHECKIN_RADIUS_METERS}m.`,
           distance: Math.round(distance),
         }, { status: 400 })
       }
@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
     // Buscar el player del usuario
     const { data: player } = await supabase
       .from('Player')
-      .select('id, statPoints, totalPointsEarned, streak, maxStreak')
+      .select('id, statPoints, totalPointsEarned, streak, maxStreak, trainingsAttended, trainingsTotal, matchesPlayed')
       .eq('userId', session.user.id)
       .single()
 

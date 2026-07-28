@@ -1,16 +1,21 @@
 'use client'
 
 import { signIn } from 'next-auth/react'
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { Shield, Sparkles, Trophy, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
-export default function LoginPage() {
+function LoginContent() {
   const [loading, setLoading] = useState(false)
+  const searchParams = useSearchParams()
 
   const handleSignIn = () => {
     setLoading(true)
-    signIn('google', { callbackUrl: '/' })
+    // Respetar el callbackUrl del query string (ej. /invite/[token])
+    // Si no hay callbackUrl, ir al home
+    const callbackUrl = searchParams.get('callbackUrl') || '/'
+    signIn('google', { callbackUrl })
   }
 
   return (
@@ -103,5 +108,17 @@ function FeatureBadge({ icon: Icon, label }: { icon: React.ElementType; label: s
       <Icon className="h-5 w-5 text-primary" />
       <span className="text-[10px] font-medium text-muted-foreground">{label}</span>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center bg-gradient-deportivo">
+        <div className="h-12 w-12 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+      </div>
+    }>
+      <LoginContent />
+    </Suspense>
   )
 }

@@ -21,7 +21,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    if (session.user.teamId) {
+    // Verificar directamente en la DB si ya tiene membership ACTIVO
+    // (no confiar en el JWT que puede estar desactualizado)
+    const { data: existingActive } = await supabase
+      .from('TeamMembership')
+      .select('id, teamId')
+      .eq('userId', session.user.id)
+      .eq('status', 'ACTIVO')
+      .limit(1)
+
+    if (existingActive && existingActive.length > 0) {
       return NextResponse.json(
         { error: 'Ya perteneces a un equipo. Sal del equipo actual primero.' },
         { status: 400 }

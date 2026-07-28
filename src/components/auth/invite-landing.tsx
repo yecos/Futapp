@@ -24,9 +24,7 @@ export function InviteLanding({ token, teamName, role }: InviteLandingProps) {
   const handleAccept = async () => {
     // Si no hay sesión, ir a login y volver
     if (status === 'unauthenticated' || !session?.user) {
-      // Guardar el token en sessionStorage para recuperarlo después del login
-      sessionStorage.setItem('pendingInviteToken', token)
-      // Ir a login
+      // El login page respeta callbackUrl y redirige aquí después de Google OAuth
       window.location.href = '/login?callbackUrl=' + encodeURIComponent('/invite/' + token)
       return
     }
