@@ -1,27 +1,28 @@
 import { getServerSession } from 'next-auth/next'
 import { redirect } from 'next/navigation'
 import { authOptions } from '@/lib/auth'
-import { supabase } from '@/lib/supabase-server'
+import { db } from '@/lib/db'
 import { RosterView } from '@/components/views/roster'
 
 export default async function PlantillaPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
 
-  const { data: memberships } = await supabase
-    .from('TeamMembership')
-    .select('teamId')
-    .eq('userId', session.user.id)
-    .eq('status', 'ACTIVO')
-    .limit(1)
+  const membership = await db.teamMembership.findFirst({
+    where: {
+      userId: session.user.id,
+      status: 'ACTIVO',
+    },
+    orderBy: { joinedAt: 'desc' },
+    select: { teamId: true },
+  })
 
-  if (!memberships?.[0]?.teamId) redirect('/choose-team')
+  if (!membership?.teamId) redirect('/choose-team')
 
-  const { data: players } = await supabase
-    .from('Player')
-    .select('*')
-    .eq('teamId', memberships[0].teamId)
-    .order('jerseyNumber', { ascending: true })
+  const players = await db.player.findMany({
+    where: { teamId: membership.teamId },
+    orderBy: { jerseyNumber: 'asc' },
+  })
 
-  return <RosterView players={players || []} />
+  return <RosterView players={players as any} />
 }

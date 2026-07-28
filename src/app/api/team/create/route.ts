@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { z } from 'zod'
-import { randomUUID } from 'crypto'
 import { authOptions } from '@/lib/auth'
-import { supabase } from '@/lib/supabase-server'
+import { db } from '@/lib/db'
 
 const createTeamSchema = z.object({
   name: z.string().min(2).max(100),
@@ -25,19 +24,19 @@ export async function POST(req: NextRequest) {
     }
 
     // Verificar directamente desde la DB si ya tiene membership ACTIVO
-    const { data: existingMembership } = await supabase
-      .from('TeamMembership')
-      .select('id, teamId, role, status')
-      .eq('userId', session.user.id)
-      .eq('status', 'ACTIVO')
-      .limit(1)
+    const existingMembership = await db.teamMembership.findFirst({
+      where: {
+        userId: session.user.id,
+        status: 'ACTIVO',
+      },
+      select: { id: true, teamId: true, role: true },
+    })
 
-    if (existingMembership && existingMembership.length > 0) {
-      // Ya tiene un equipo → no crear otro
+    if (existingMembership) {
       return NextResponse.json({
         success: true,
         alreadyHasTeam: true,
-        teamId: existingMembership[0].teamId,
+        teamId: existingMembership.teamId,
         message: 'Ya tienes un equipo activo',
       })
     }
@@ -52,15 +51,9 @@ export async function POST(req: NextRequest) {
     }
     const data = parsed.data
 
-    const teamId = randomUUID()
-    const membershipId = randomUUID()
-    const ts = new Date().toISOString()
-
-    // Crear Team
-    const { error: teamError } = await supabase
-      .from('Team')
-      .insert({
-        id: teamId,
+    // Crear Team + Membership en transacción
+    const team = await db.team.create({
+      data: {
         name: data.name,
         shortName: data.shortName.toUpperCase(),
         category: data.category,
@@ -68,36 +61,20 @@ export async function POST(req: NextRequest) {
         foundedYear: new Date().getFullYear(),
         onboardingCompleted: false,
         isActive: true,
-        createdAt: ts,
-        updatedAt: ts,
-      })
-
-    if (teamError) {
-      console.error('[API team/create] Team error:', teamError)
-      return NextResponse.json({ error: teamError.message }, { status: 500 })
-    }
-
-    // Crear membership ADMIN
-    const { error: memError } = await supabase
-      .from('TeamMembership')
-      .insert({
-        id: membershipId,
-        userId: session.user.id,
-        teamId,
-        role: 'ADMIN',
-        status: 'ACTIVO',
-        joinedAt: ts,
-      })
-
-    if (memError) {
-      console.error('[API team/create] Membership error:', memError)
-      await supabase.from('Team').delete().eq('id', teamId)
-      return NextResponse.json({ error: memError.message }, { status: 500 })
-    }
+        memberships: {
+          create: {
+            userId: session.user.id,
+            role: 'ADMIN',
+            status: 'ACTIVO',
+            joinedAt: new Date(),
+          },
+        },
+      },
+    })
 
     return NextResponse.json({
       success: true,
-      teamId,
+      teamId: team.id,
     })
   } catch (error: any) {
     console.error('[API team/create] Error:', error)

@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { randomUUID } from 'crypto'
 import { authOptions } from '@/lib/auth'
-import { supabase } from '@/lib/supabase-server'
+import { db } from '@/lib/db'
 
 const CHECKIN_RADIUS_METERS = 300
 const CHECKIN_WINDOW_MINUTES = 30
@@ -38,15 +37,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Obtener el evento
-    const { data: event } = await supabase
-      .from('Event')
-      .select('*')
-      .eq('id', eventId)
-      .single()
-
+    const event = await db.event.findUnique({ where: { id: eventId } })
     if (!event) return NextResponse.json({ error: 'Evento no encontrado' }, { status: 404 })
 
-    // Verificar ventana de tiempo (30 min antes hasta 30 min después)
+    // Verificar ventana de tiempo
     const now = new Date()
     const eventStart = new Date(event.date)
     const windowStart = new Date(eventStart.getTime() - CHECKIN_WINDOW_MINUTES * 60 * 1000)
@@ -64,15 +58,10 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
 
-    // Verificar que el evento tenga coordenadas
-    if (!event.latitude || !event.longitude) {
-      // Si no tiene coordenadas, usar la ubicación del jugador como referencia
-      // (para eventos sin ubicación GPS configurada)
-      // Aceptar el check-in sin verificación de distancia
-    } else {
-      // Calcular distancia
-      const distance = haversineDistance(latitude, longitude, event.latitude, event.longitude)
-
+    // Verificar distancia si el evento tiene coordenadas
+    let distance = 0
+    if (event.latitude && event.longitude) {
+      distance = haversineDistance(latitude, longitude, event.latitude, event.longitude)
       if (distance > CHECKIN_RADIUS_METERS) {
         return NextResponse.json({
           error: `Estás a ${Math.round(distance)}m del evento. Debes estar a menos de ${CHECKIN_RADIUS_METERS}m.`,
@@ -82,33 +71,31 @@ export async function POST(req: NextRequest) {
     }
 
     // Buscar el player del usuario
-    const { data: player } = await supabase
-      .from('Player')
-      .select('id, statPoints, totalPointsEarned, streak, maxStreak, trainingsAttended, trainingsTotal, matchesPlayed')
-      .eq('userId', session.user.id)
-      .single()
+    const player = await db.player.findUnique({
+      where: { userId: session.user.id },
+      select: {
+        id: true, statPoints: true, totalPointsEarned: true, streak: true, maxStreak: true,
+        trainingsAttended: true, trainingsTotal: true, matchesPlayed: true,
+      },
+    })
 
     if (!player) return NextResponse.json({ error: 'No tienes perfil de jugador' }, { status: 400 })
 
     // Verificar si ya hizo check-in
-    const { data: existingCheckin } = await supabase
-      .from('CheckIn')
-      .select('id')
-      .eq('eventId', eventId)
-      .eq('playerId', player.id)
-      .single()
+    const existingCheckin = await db.checkIn.findUnique({
+      where: { eventId_playerId: { eventId, playerId: player.id } },
+      select: { id: true },
+    })
 
     if (existingCheckin) {
       return NextResponse.json({ error: 'Ya hiciste check-in en este evento' }, { status: 400 })
     }
 
-    // Verificar si justificó ausencia (no puede hacer check-in si justificó)
-    const { data: existingAbsence } = await supabase
-      .from('Absence')
-      .select('id')
-      .eq('eventId', eventId)
-      .eq('playerId', player.id)
-      .single()
+    // Verificar si justificó ausencia
+    const existingAbsence = await db.absence.findUnique({
+      where: { eventId_playerId: { eventId, playerId: player.id } },
+      select: { id: true },
+    })
 
     if (existingAbsence) {
       return NextResponse.json({ error: 'Justificaste ausencia para este evento. No puedes hacer check-in.' }, { status: 400 })
@@ -134,36 +121,32 @@ export async function POST(req: NextRequest) {
     const newMaxStreak = Math.max(player.maxStreak || 0, newStreak)
 
     // Crear check-in
-    const distance = event.latitude ? haversineDistance(latitude, longitude, event.latitude, event.longitude) : 0
-    await supabase.from('CheckIn').insert({
-      id: randomUUID(),
-      eventId,
-      playerId: player.id,
-      userId: session.user.id,
-      latitude,
-      longitude,
-      distance: Math.round(distance),
-      pointsAwarded: totalPoints,
-      isLate,
+    await db.checkIn.create({
+      data: {
+        eventId,
+        playerId: player.id,
+        userId: session.user.id,
+        latitude,
+        longitude,
+        distance: Math.round(distance),
+        pointsAwarded: totalPoints,
+        isLate,
+      },
     })
 
     // Actualizar player
-    await supabase.from('Player').update({
-      statPoints: newStatPoints,
-      totalPointsEarned: newTotalEarned,
-      streak: newStreak,
-      maxStreak: newMaxStreak,
-      trainingsAttended: isTraining ? (player.trainingsAttended || 0) + 1 : player.trainingsAttended,
-      trainingsTotal: isTraining ? (player.trainingsTotal || 0) + 1 : player.trainingsTotal,
-      updatedAt: now.toISOString(),
-    }).eq('id', player.id)
-
-    // Si no era entrenamiento, actualizar matchesPlayed
-    if (!isTraining) {
-      await supabase.from('Player').update({
-        matchesPlayed: (player.matchesPlayed || 0) + 1,
-      }).eq('id', player.id)
-    }
+    await db.player.update({
+      where: { id: player.id },
+      data: {
+        statPoints: newStatPoints,
+        totalPointsEarned: newTotalEarned,
+        streak: newStreak,
+        maxStreak: newMaxStreak,
+        trainingsAttended: isTraining ? (player.trainingsAttended || 0) + 1 : player.trainingsAttended,
+        trainingsTotal: isTraining ? (player.trainingsTotal || 0) + 1 : player.trainingsTotal,
+        matchesPlayed: !isTraining ? (player.matchesPlayed || 0) + 1 : player.matchesPlayed,
+      },
+    })
 
     const level = getLevel(newTotalEarned)
 

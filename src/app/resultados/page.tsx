@@ -1,34 +1,38 @@
 import { getServerSession } from 'next-auth/next'
 import { redirect } from 'next/navigation'
 import { authOptions } from '@/lib/auth'
-import { supabase } from '@/lib/supabase-server'
+import { db } from '@/lib/db'
 import { ResultsView } from '@/components/views/results'
 
 export default async function ResultadosPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
 
-  const { data: memberships } = await supabase
-    .from('TeamMembership')
-    .select('teamId')
-    .eq('userId', session.user.id)
-    .eq('status', 'ACTIVO')
-    .limit(1)
+  const membership = await db.teamMembership.findFirst({
+    where: {
+      userId: session.user.id,
+      status: 'ACTIVO',
+    },
+    orderBy: { joinedAt: 'desc' },
+    select: { teamId: true },
+  })
 
-  if (!memberships?.[0]?.teamId) redirect('/choose-team')
+  if (!membership?.teamId) redirect('/choose-team')
 
-  const { data: matches } = await supabase
-    .from('Event')
-    .select('*')
-    .eq('teamId', memberships[0].teamId)
-    .eq('type', 'PARTIDO')
-    .eq('status', 'COMPLETADO')
-    .order('date', { ascending: false })
+  const [matches, stats] = await Promise.all([
+    db.event.findMany({
+      where: {
+        teamId: membership.teamId,
+        type: 'PARTIDO',
+        status: 'COMPLETADO',
+      },
+      orderBy: { date: 'desc' },
+    }),
+    db.matchStat.findMany({
+      where: { teamId: membership.teamId },
+      include: { player: { select: { fullName: true, jerseyNumber: true } } },
+    }),
+  ])
 
-  const { data: stats } = await supabase
-    .from('MatchStat')
-    .select('*, player:Player(fullName, jerseyNumber)')
-    .eq('teamId', memberships[0].teamId)
-
-  return <ResultsView matches={matches || []} stats={stats || []} />
+  return <ResultsView matches={matches as any} stats={stats as any} />
 }

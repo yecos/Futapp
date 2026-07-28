@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { z } from 'zod'
 import { authOptions } from '@/lib/auth'
-import { supabase } from '@/lib/supabase-server'
+import { db } from '@/lib/db'
 
 const onboardingSchema = z.object({
   primaryColor: z.string().regex(/^#[0-9a-f]{6}$/i).default('#16a34a'),
@@ -17,10 +17,6 @@ const onboardingSchema = z.object({
 /**
  * POST /api/team/onboarding
  * Completa el onboarding del equipo (colores + datos bancarios).
- * Solo actualiza los campos que no se pidieron en /choose-team.
- *
- * IMPORTANTE: Verifica el rol directamente desde la DB, no del JWT
- * (que puede estar desactualizado después de crear el equipo).
  */
 export async function POST(req: NextRequest) {
   try {
@@ -29,13 +25,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    // Consultar membership directamente desde la DB
-    const { data: membership } = await supabase
-      .from('TeamMembership')
-      .select('role, teamId')
-      .eq('userId', session.user.id)
-      .eq('status', 'ACTIVO')
-      .single()
+    const membership = await db.teamMembership.findFirst({
+      where: {
+        userId: session.user.id,
+        status: 'ACTIVO',
+      },
+      orderBy: { joinedAt: 'desc' },
+      select: { role: true, teamId: true },
+    })
 
     if (!membership || !membership.teamId) {
       return NextResponse.json({ error: 'Sin equipo' }, { status: 400 })
@@ -58,9 +55,9 @@ export async function POST(req: NextRequest) {
     }
     const data = parsed.data
 
-    const { error } = await supabase
-      .from('Team')
-      .update({
+    await db.team.update({
+      where: { id: membership.teamId },
+      data: {
         primaryColor: data.primaryColor,
         foundedYear: data.foundedYear,
         bankName: data.bankName,
@@ -69,11 +66,8 @@ export async function POST(req: NextRequest) {
         accountHolder: data.accountHolder,
         paymentInstructions: data.paymentInstructions,
         onboardingCompleted: true,
-        updatedAt: new Date().toISOString(),
-      })
-      .eq('id', membership.teamId)
-
-    if (error) throw error
+      },
+    })
 
     return NextResponse.json({ success: true })
   } catch (error: any) {

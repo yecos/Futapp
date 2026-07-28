@@ -1,7 +1,7 @@
 import { getServerSession } from 'next-auth/next'
 import { redirect } from 'next/navigation'
 import { authOptions } from '@/lib/auth'
-import { supabase } from '@/lib/supabase-server'
+import { db } from '@/lib/db'
 import { OnboardingView } from '@/components/onboarding/onboarding-view'
 
 export default async function OnboardingPage() {
@@ -9,16 +9,14 @@ export default async function OnboardingPage() {
   if (!session?.user) redirect('/login')
 
   // Consultar membership directamente desde la DB
-  // Usar .limit(1) en lugar de .single() para evitar errores si hay múltiples
-  const { data: memberships } = await supabase
-    .from('TeamMembership')
-    .select('role, status, teamId, team:Team(*)')
-    .eq('userId', session.user.id)
-    .eq('status', 'ACTIVO')
-    .order('joinedAt', { ascending: false })
-    .limit(1)
-
-  const membership = memberships?.[0]
+  const membership = await db.teamMembership.findFirst({
+    where: {
+      userId: session.user.id,
+      status: 'ACTIVO',
+    },
+    orderBy: { joinedAt: 'desc' },
+    include: { team: true },
+  })
 
   if (!membership || !membership.teamId) {
     redirect('/choose-team')
@@ -28,10 +26,9 @@ export default async function OnboardingPage() {
     redirect('/')
   }
 
-  const team = membership.team as any
-  if (team?.onboardingCompleted) {
+  if (membership.team.onboardingCompleted) {
     redirect('/')
   }
 
-  return <OnboardingView teamId={membership.teamId} teamName={team.name} />
+  return <OnboardingView teamId={membership.teamId} teamName={membership.team.name} />
 }

@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase-server'
+import { db } from '@/lib/db'
 
 export async function GET(req: NextRequest) {
-  // Verificar que viene de Vercel Cron
   const isCron = req.headers.get('x-vercel-cron') === '1'
   if (!isCron && process.env.NODE_ENV === 'production') {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
@@ -18,31 +17,32 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const { data: pendingPayments } = await supabase
-      .from('Payment')
-      .select(`
-        *,
-        receipts:PaymentReceipt(status, playerId)
-      `)
-      .in('status', ['PENDIENTE', 'VENCIDO'])
-      .lte('dueDate', in3Days.toISOString())
+    const pendingPayments = await db.payment.findMany({
+      where: {
+        status: { in: ['PENDIENTE', 'VENCIDO'] },
+        dueDate: { lte: in3Days },
+      },
+      include: {
+        receipts: { select: { status: true, playerId: true } },
+      },
+    })
 
-    stats.paymentsChecked = pendingPayments?.length || 0
+    stats.paymentsChecked = pendingPayments.length
 
-    for (const payment of pendingPayments || []) {
+    for (const payment of pendingPayments) {
       const applies = payment.appliesTo as string[]
-      let playersQuery = supabase
-        .from('Player')
-        .select('id, userId, fullName')
-        .eq('teamId', payment.teamId)
-
+      const playersWhere: any = { teamId: payment.teamId }
       if (applies && !applies.includes('ALL')) {
-        playersQuery = playersQuery.in('id', applies)
+        playersWhere.id = { in: applies }
       }
 
-      const { data: players } = await playersQuery
-      const pendingPlayers = (players || []).filter(
-        (p: any) => !payment.receipts?.some((r: any) =>
+      const players = await db.player.findMany({
+        where: playersWhere,
+        select: { id: true, userId: true, fullName: true },
+      })
+
+      const pendingPlayers = players.filter(
+        (p) => !payment.receipts.some((r) =>
           r.playerId === p.id && ['VERIFICADO', 'PAGADO'].includes(r.status)
         )
       )
@@ -65,10 +65,10 @@ export async function GET(req: NextRequest) {
         body = `Venció hace ${Math.abs(diffDays)} día${Math.abs(diffDays) === 1 ? '' : 's'}. Regulariza cuanto antes.`
       } else {
         if (payment.status !== 'VENCIDO') {
-          await supabase
-            .from('Payment')
-            .update({ status: 'VENCIDO' })
-            .eq('id', payment.id)
+          await db.payment.update({
+            where: { id: payment.id },
+            data: { status: 'VENCIDO' },
+          })
           stats.paymentsMarkedVencido++
         }
         continue
@@ -81,17 +81,18 @@ export async function GET(req: NextRequest) {
       for (const player of pendingPlayers) {
         if (!player.userId) continue
 
-        const { data: existing } = await supabase
-          .from('Notification')
-          .select('id')
-          .eq('userId', player.userId)
-          .eq('relatedEntityType', 'PAYMENT')
-          .eq('relatedEntityId', payment.id)
-          .eq('type', 'PAYMENT_REMINDER')
-          .gte('sentAt', today.toISOString())
-          .limit(1)
+        const existing = await db.notification.findFirst({
+          where: {
+            userId: player.userId,
+            relatedEntityType: 'PAYMENT',
+            relatedEntityId: payment.id,
+            type: 'PAYMENT_REMINDER',
+            sentAt: { gte: today },
+          },
+          select: { id: true },
+        })
 
-        if (existing && existing.length > 0) continue
+        if (existing) continue
 
         notificationsToCreate.push({
           teamId: payment.teamId,
@@ -101,14 +102,14 @@ export async function GET(req: NextRequest) {
           body,
           channel: 'IN_APP',
           status: 'ENVIADA',
-          sentAt: new Date().toISOString(),
+          sentAt: now,
           relatedEntityType: 'PAYMENT',
           relatedEntityId: payment.id,
         })
       }
 
       if (notificationsToCreate.length > 0) {
-        await supabase.from('Notification').insert(notificationsToCreate)
+        await db.notification.createMany({ data: notificationsToCreate })
         stats.remindersSent += notificationsToCreate.length
       }
     }

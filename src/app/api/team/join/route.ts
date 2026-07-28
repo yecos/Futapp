@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { z } from 'zod'
-import { randomUUID } from 'crypto'
 import { authOptions } from '@/lib/auth'
-import { supabase } from '@/lib/supabase-server'
+import { db } from '@/lib/db'
 
 const joinSchema = z.object({
   token: z.string().min(1),
@@ -22,15 +21,15 @@ export async function POST(req: NextRequest) {
     }
 
     // Verificar directamente en la DB si ya tiene membership ACTIVO
-    // (no confiar en el JWT que puede estar desactualizado)
-    const { data: existingActive } = await supabase
-      .from('TeamMembership')
-      .select('id, teamId')
-      .eq('userId', session.user.id)
-      .eq('status', 'ACTIVO')
-      .limit(1)
+    const existingActive = await db.teamMembership.findFirst({
+      where: {
+        userId: session.user.id,
+        status: 'ACTIVO',
+      },
+      select: { id: true, teamId: true },
+    })
 
-    if (existingActive && existingActive.length > 0) {
+    if (existingActive) {
       return NextResponse.json(
         { error: 'Ya perteneces a un equipo. Sal del equipo actual primero.' },
         { status: 400 }
@@ -54,20 +53,17 @@ export async function POST(req: NextRequest) {
     }
 
     // Buscar el invite
-    const { data: invite, error: inviteError } = await supabase
-      .from('InviteToken')
-      .select('*')
-      .eq('token', token)
-      .single()
+    const invite = await db.inviteToken.findUnique({
+      where: { token },
+    })
 
-    if (inviteError || !invite) {
+    if (!invite) {
       return NextResponse.json(
         { error: 'Código de invitación inválido' },
         { status: 404 }
       )
     }
 
-    // Verificar que no esté usado
     if (invite.usedBy) {
       return NextResponse.json(
         { error: 'Este código ya fue usado' },
@@ -75,59 +71,60 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Verificar que no esté expirado
-    if (new Date(invite.expiresAt) < new Date()) {
+    if (invite.expiresAt < new Date()) {
       return NextResponse.json(
         { error: 'Este código ha expirado' },
         { status: 400 }
       )
     }
 
-    // Crear o actualizar membership
-    const { data: existing } = await supabase
-      .from('TeamMembership')
-      .select('id')
-      .eq('userId', session.user.id)
-      .eq('teamId', invite.teamId)
-      .single()
-
-    if (existing) {
-      await supabase
-        .from('TeamMembership')
-        .update({
-          role: invite.role,
-          status: 'ACTIVO',
-          joinedAt: new Date().toISOString(),
-        })
-        .eq('id', existing.id)
-    } else {
-      await supabase
-        .from('TeamMembership')
-        .insert({
-          id: randomUUID(),
-          userId: session.user.id,
-          teamId: invite.teamId,
-          role: invite.role,
-          status: 'ACTIVO',
-          joinedAt: new Date().toISOString(),
-        })
-    }
-
-    // Marcar invite como usado
-    await supabase
-      .from('InviteToken')
-      .update({
-        usedBy: session.user.id,
-        usedAt: new Date().toISOString(),
+    // Crear o actualizar membership (transacción)
+    await db.$transaction(async (tx) => {
+      const existing = await tx.teamMembership.findUnique({
+        where: {
+          userId_teamId: {
+            userId: session.user.id,
+            teamId: invite.teamId,
+          },
+        },
       })
-      .eq('id', invite.id)
+
+      if (existing) {
+        await tx.teamMembership.update({
+          where: { id: existing.id },
+          data: {
+            role: invite.role,
+            status: 'ACTIVO',
+            joinedAt: new Date(),
+          },
+        })
+      } else {
+        await tx.teamMembership.create({
+          data: {
+            userId: session.user.id,
+            teamId: invite.teamId,
+            role: invite.role,
+            status: 'ACTIVO',
+            joinedAt: new Date(),
+          },
+        })
+      }
+
+      // Marcar invite como usado
+      await tx.inviteToken.update({
+        where: { id: invite.id },
+        data: {
+          usedBy: session.user.id,
+          usedAt: new Date(),
+        },
+      })
+    })
 
     // Obtener info del team para la respuesta
-    const { data: team } = await supabase
-      .from('Team')
-      .select('name, shortName, onboardingCompleted')
-      .eq('id', invite.teamId)
-      .single()
+    const team = await db.team.findUnique({
+      where: { id: invite.teamId },
+      select: { name: true, shortName: true, onboardingCompleted: true },
+    })
 
     return NextResponse.json({
       success: true,

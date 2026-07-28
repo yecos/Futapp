@@ -1,7 +1,7 @@
 import { getServerSession } from 'next-auth/next'
 import { redirect } from 'next/navigation'
 import { authOptions } from '@/lib/auth'
-import { supabase } from '@/lib/supabase-server'
+import { db } from '@/lib/db'
 import { DashboardView } from '@/components/views/dashboard'
 
 export default async function HomePage() {
@@ -9,84 +9,115 @@ export default async function HomePage() {
   if (!session?.user) redirect('/login')
 
   // Consultar membership directamente desde la DB
-  const { data: memberships } = await supabase
-    .from('TeamMembership')
-    .select('role, status, teamId, team:Team(name, shortName, onboardingCompleted)')
-    .eq('userId', session.user.id)
-    .eq('status', 'ACTIVO')
-    .order('joinedAt', { ascending: false })
-    .limit(1)
-
-  const membership = memberships?.[0]
+  const membership = await db.teamMembership.findFirst({
+    where: {
+      userId: session.user.id,
+      status: 'ACTIVO',
+    },
+    orderBy: { joinedAt: 'desc' },
+    include: { team: true },
+  })
 
   // Si no tiene membership ACTIVO, verificar si tiene PENDIENTE
   if (!membership || !membership.teamId) {
-    const { data: pending } = await supabase
-      .from('TeamMembership')
-      .select('teamId')
-      .eq('userId', session.user.id)
-      .eq('status', 'PENDIENTE')
-      .limit(1)
+    const pending = await db.teamMembership.findFirst({
+      where: {
+        userId: session.user.id,
+        status: 'PENDIENTE',
+      },
+    })
 
-    if (pending && pending.length > 0) {
+    if (pending) {
       redirect('/pending')
     }
     redirect('/choose-team')
   }
 
-  if (membership.role === 'ADMIN' && !(membership.team as any)?.onboardingCompleted) {
+  if (membership.role === 'ADMIN' && !membership.team.onboardingCompleted) {
     redirect('/onboarding')
   }
 
-  const team = membership.team as any
-  if (!team) redirect('/choose-team')
-
+  const team = membership.team
   const teamId = membership.teamId
 
-  // Fetch ALL dashboard data directly here (no API call needed)
-  const now = new Date().toISOString()
+  // Fetch ALL dashboard data in parallel
+  const now = new Date()
 
   const [
-    { count: totalPlayers },
-    { count: totalEvents },
-    { data: nextEvents },
-    { data: topScorers },
-    { count: totalPayments },
-    { data: verifiedReceipts },
-    { data: recentMatches },
+    totalPlayers,
+    totalEvents,
+    nextEvents,
+    topScorers,
+    totalPayments,
+    verifiedReceipts,
+    recentMatches,
   ] = await Promise.all([
-    supabase.from('Player').select('*', { count: 'exact', head: true }).eq('teamId', teamId),
-    supabase.from('Event').select('*', { count: 'exact', head: true }).eq('teamId', teamId).gte('date', now).eq('status', 'PROGRAMADO'),
-    supabase.from('Event').select('title, date, location, type').eq('teamId', teamId).gte('date', now).eq('status', 'PROGRAMADO').order('date', { ascending: true }).limit(1),
-    supabase.from('Player').select('fullName, goals, jerseyNumber').eq('teamId', teamId).order('goals', { ascending: false }).limit(1),
-    supabase.from('Payment').select('*', { count: 'exact', head: true }).eq('teamId', teamId).eq('status', 'PENDIENTE'),
-    supabase.from('PaymentReceipt').select('amount').eq('teamId', teamId).eq('status', 'VERIFICADO'),
-    supabase.from('Event').select('title, homeScore, awayScore, isHome').eq('teamId', teamId).eq('status', 'COMPLETADO').not('homeScore', 'is', null).order('date', { ascending: false }).limit(3),
+    db.player.count({ where: { teamId } }),
+    db.event.count({
+      where: {
+        teamId,
+        date: { gte: now },
+        status: 'PROGRAMADO',
+      },
+    }),
+    db.event.findMany({
+      where: {
+        teamId,
+        date: { gte: now },
+        status: 'PROGRAMADO',
+      },
+      select: { title: true, date: true, location: true, type: true },
+      orderBy: { date: 'asc' },
+      take: 1,
+    }),
+    db.player.findMany({
+      where: { teamId },
+      select: { fullName: true, goals: true, jerseyNumber: true },
+      orderBy: { goals: 'desc' },
+      take: 1,
+    }),
+    db.payment.count({
+      where: { teamId, status: 'PENDIENTE' },
+    }),
+    db.paymentReceipt.findMany({
+      where: { teamId, status: 'VERIFICADO' },
+      select: { amount: true },
+    }),
+    db.event.findMany({
+      where: {
+        teamId,
+        status: 'COMPLETADO',
+        homeScore: { not: null },
+      },
+      select: { title: true, homeScore: true, awayScore: true, isHome: true },
+      orderBy: { date: 'desc' },
+      take: 3,
+    }),
   ])
 
-  const totalRecaudado = (verifiedReceipts || []).reduce(
-    (sum: number, r: any) => sum + Number(r.amount || 0), 0
+  const totalRecaudado = verifiedReceipts.reduce(
+    (sum, r) => sum + Number(r.amount || 0), 0
   )
 
-  const recentResults = (recentMatches || []).map((m: any) => {
-    const ourScore = m.isHome ? m.homeScore : m.awayScore
-    const oppScore = m.isHome ? m.awayScore : m.homeScore
+  const recentResults = recentMatches.map((m) => {
+    const ourScore = m.isHome ? m.homeScore! : m.awayScore!
+    const oppScore = m.isHome ? m.awayScore! : m.homeScore!
     return {
       title: m.title,
-      homeScore: m.homeScore,
-      awayScore: m.awayScore,
+      homeScore: m.homeScore!,
+      awayScore: m.awayScore!,
       isWin: ourScore > oppScore,
       isDraw: ourScore === oppScore,
     }
   })
 
   const dashboardData = {
-    totalPlayers: totalPlayers || 0,
-    totalEvents: totalEvents || 0,
-    totalPayments: totalPayments || 0,
+    totalPlayers,
+    totalEvents,
+    totalPayments,
     totalRecaudado,
-    nextEvent: nextEvents?.[0] || undefined,
-    topScorer: topScorers?.[0] || undefined,
+    nextEvent: nextEvents[0] || undefined,
+    topScorer: topScorers[0] || undefined,
     recentResults,
   }
 

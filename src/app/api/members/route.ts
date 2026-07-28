@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { z } from 'zod'
 import { authOptions } from '@/lib/auth'
-import { supabase } from '@/lib/supabase-server'
+import { db } from '@/lib/db'
 
 const updateMemberSchema = z.object({
   membershipId: z.string(),
@@ -16,14 +16,25 @@ export async function PATCH(req: NextRequest) {
     if (!session?.user) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
-    if (session.user.role !== 'ADMIN') {
+
+    const membership = await db.teamMembership.findFirst({
+      where: {
+        userId: session.user.id,
+        status: 'ACTIVO',
+      },
+      orderBy: { joinedAt: 'desc' },
+      select: { role: true, teamId: true },
+    })
+
+    if (!membership?.teamId) {
+      return NextResponse.json({ error: 'Sin equipo asignado' }, { status: 400 })
+    }
+
+    if (membership.role !== 'ADMIN') {
       return NextResponse.json({ error: 'Solo el admin' }, { status: 403 })
     }
 
-    const teamId = session.user.teamId
-    if (!teamId) {
-      return NextResponse.json({ error: 'Sin equipo asignado' }, { status: 400 })
-    }
+    const teamId = membership.teamId
     const body = await req.json()
     const parsed = updateMemberSchema.safeParse(body)
     if (!parsed.success) {
@@ -34,18 +45,16 @@ export async function PATCH(req: NextRequest) {
     }
     const { membershipId, action, newRole } = parsed.data
 
-    const { data: membership } = await supabase
-      .from('TeamMembership')
-      .select('id')
-      .eq('id', membershipId)
-      .eq('teamId', teamId)
-      .single()
+    // Verificar que el membership existe y pertenece al equipo
+    const targetMembership = await db.teamMembership.findFirst({
+      where: { id: membershipId, teamId },
+    })
 
-    if (!membership) {
+    if (!targetMembership) {
       return NextResponse.json({ error: 'Membresía no encontrada' }, { status: 404 })
     }
 
-    const now = new Date().toISOString()
+    const now = new Date()
     let update: any = {}
 
     if (action === 'approve') {
@@ -58,14 +67,10 @@ export async function PATCH(req: NextRequest) {
       update = { status: 'BLOQUEADO', leftAt: now }
     }
 
-    const { data: updated, error } = await supabase
-      .from('TeamMembership')
-      .update(update)
-      .eq('id', membershipId)
-      .select()
-      .single()
-
-    if (error) throw error
+    const updated = await db.teamMembership.update({
+      where: { id: membershipId },
+      data: update,
+    })
 
     return NextResponse.json(updated)
   } catch (error: any) {

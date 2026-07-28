@@ -1,157 +1,86 @@
 import type { NextAuthOptions } from 'next-auth'
 import GoogleProvider from 'next-auth/providers/google'
-import { SupabaseRestAdapter } from '@/lib/supabase-auth-adapter'
-import { randomUUID } from 'crypto'
+import { PrismaAdapter } from '@auth/prisma-adapter'
+import { db } from '@/lib/db'
 
 /**
- * Configuración de NextAuth con Google + Supabase REST API.
+ * Configuración de NextAuth con Google OAuth + Prisma (Neon Postgres).
  *
- * IMPORTANTE: Se construye de forma lazy vía `getAuthOptions()` para evitar
- * que el build de Next.js falle cuando las variables de entorno de Google
- * OAuth o Supabase no están disponibles (ej. en CI/local sin env vars).
+ * Usa el adapter oficial @auth/prisma-adapter que maneja automáticamente
+ * la creación de Users, Accounts, Sessions y VerificationTokens.
  *
- * `authOptions` es un Proxy que delega a la instancia construida lazy,
- * manteniendo compatibilidad con el código existente que lo importa.
+ * El JWT callback consulta la DB directamente para mantener actualizado
+ * el rol del usuario, su teamId y estado de membership.
  */
 
-let _authOptions: NextAuthOptions | null = null
-
-export function getAuthOptions(): NextAuthOptions {
-  if (_authOptions) return _authOptions
-  _authOptions = {
-    adapter: SupabaseRestAdapter(),
-    session: { strategy: 'jwt' },
-    providers: [
-      GoogleProvider({
-        clientId: process.env.GOOGLE_CLIENT_ID || 'placeholder-client-id',
-        clientSecret: process.env.GOOGLE_CLIENT_SECRET || 'placeholder-client-secret',
-      }),
-    ],
-    pages: {
-      signIn: '/login',
-      error: '/login',
-    },
-    callbacks: {
-      async signIn({ user, account, profile }) {
-      console.log('[Auth:signIn] User:', user.email, 'Account provider:', account?.provider)
+export const authOptions: NextAuthOptions = {
+  // @ts-expect-error - El adapter de Prisma es compatible pero los tipos
+  // difieren ligeramente entre versiones
+  adapter: PrismaAdapter(db),
+  session: { strategy: 'jwt' },
+  providers: [
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID || 'placeholder-client-id',
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || 'placeholder-client-secret',
+    }),
+  ],
+  pages: {
+    signIn: '/login',
+    error: '/login',
+  },
+  callbacks: {
+    async signIn({ user }) {
+      // Permitir el sign-in; la membership se resuelve en el jwt callback
       return true
     },
 
     async jwt({ token, user, trigger }) {
-      console.log('[Auth:jwt] Start. user:', !!user, 'trigger:', trigger, 'userId:', token.userId)
-
+      // Primer login o refresh forzado: establecer userId
       if (user) {
         token.userId = user.id
-        console.log('[Auth:jwt] Set userId:', user.id)
-
-        // Verificar invite link
-        const callbackUrl = token.callbackUrl as string | undefined
-        const inviteMatch = callbackUrl?.match(/\/invite\/([a-f0-9-]+)/)
-        if (inviteMatch) {
-          console.log('[Auth:jwt] Invite link detected:', inviteMatch[1])
-          try {
-            const { supabase } = await import('@/lib/supabase-server')
-            const { data: invite } = await supabase
-              .from('InviteToken')
-              .select('*')
-              .eq('token', inviteMatch[1])
-              .is('usedBy', null)
-              .gt('expiresAt', new Date().toISOString())
-              .single()
-
-            if (invite) {
-              console.log('[Auth:jwt] Invite found, creating membership')
-              const { data: existing } = await supabase
-                .from('TeamMembership')
-                .select('id')
-                .eq('userId', user.id)
-                .eq('teamId', invite.teamId)
-                .single()
-
-              if (existing) {
-                await supabase.from('TeamMembership').update({
-                  role: invite.role, status: 'ACTIVO',
-                  joinedAt: new Date().toISOString(),
-                }).eq('id', existing.id)
-              } else {
-                await supabase.from('TeamMembership').insert({
-                  id: randomUUID(), userId: user.id, teamId: invite.teamId,
-                  role: invite.role, status: 'ACTIVO',
-                  joinedAt: new Date().toISOString(),
-                })
-              }
-
-              await supabase.from('InviteToken').update({
-                usedBy: user.id, usedAt: new Date().toISOString(),
-              }).eq('id', invite.id)
-
-              const { data: team } = await supabase
-                .from('Team').select('onboardingCompleted').eq('id', invite.teamId).single()
-
-              token.role = invite.role
-              token.teamId = invite.teamId
-              token.membershipStatus = 'ACTIVO'
-              token.onboardingCompleted = team?.onboardingCompleted ?? false
-              console.log('[Auth:jwt] Invite processed, returning token')
-              return token
-            }
-          } catch (e: any) {
-            console.error('[Auth:jwt] Invite error:', e.message)
-          }
-        }
       }
 
-      // Verificar membership en DB
       // Refrescar si: primer login, update explícito, sin teamId, PENDIENTE, o TTL expirado (5 min)
       const TTL = 5 * 60 * 1000 // 5 minutos
       const needsRefresh = !token.lastRefresh || (Date.now() - token.lastRefresh) > TTL
       if (user || trigger === 'update' || (token.userId && !token.teamId) || token.membershipStatus === 'PENDIENTE' || needsRefresh) {
         token.lastRefresh = Date.now()
-        console.log('[Auth:jwt] Checking membership for user:', token.userId)
         try {
-          const { supabase } = await import('@/lib/supabase-server')
-
-          const { data: memberships, error: memError } = await supabase
-            .from('TeamMembership')
-            .select('role, status, teamId, team:Team(onboardingCompleted)')
-            .eq('userId', token.userId)
-            .eq('status', 'ACTIVO')
-            .order('joinedAt', { ascending: false })
-            .limit(1)
-
-          if (memError) {
-            console.error('[Auth:jwt] Membership query error:', memError.message)
-          }
-
-          const membership = memberships?.[0]
-          console.log('[Auth:jwt] Membership found:', !!membership)
+          // Buscar membership ACTIVO más reciente
+          const membership = await db.teamMembership.findFirst({
+            where: {
+              userId: token.userId,
+              status: 'ACTIVO',
+            },
+            orderBy: { joinedAt: 'desc' },
+            include: { team: { select: { onboardingCompleted: true } } },
+          })
 
           if (membership) {
             token.role = membership.role
             token.teamId = membership.teamId
             token.membershipStatus = membership.status
-            token.onboardingCompleted = (membership.team as any)?.onboardingCompleted ?? false
-            console.log('[Auth:jwt] Token updated: role=', token.role, 'teamId=', token.teamId)
+            token.onboardingCompleted = membership.team.onboardingCompleted
           } else {
-            const { data: pending } = await supabase
-              .from('TeamMembership')
-              .select('teamId')
-              .eq('userId', token.userId)
-              .eq('status', 'PENDIENTE')
-              .limit(1)
+            // Buscar membership PENDIENTE
+            const pending = await db.teamMembership.findFirst({
+              where: {
+                userId: token.userId,
+                status: 'PENDIENTE',
+              },
+              orderBy: { joinedAt: 'desc' },
+            })
 
-            if (pending && pending.length > 0) {
+            if (pending) {
               token.role = 'SEGUIDOR'
-              token.teamId = pending[0].teamId
+              token.teamId = pending.teamId
               token.membershipStatus = 'PENDIENTE'
               token.onboardingCompleted = false
-              console.log('[Auth:jwt] Pending membership found')
             } else {
               token.role = null
               token.teamId = null
               token.membershipStatus = null
               token.onboardingCompleted = false
-              console.log('[Auth:jwt] No membership found')
             }
           }
         } catch (e: any) {
@@ -159,7 +88,6 @@ export function getAuthOptions(): NextAuthOptions {
         }
       }
 
-      console.log('[Auth:jwt] Done. role:', token.role, 'teamId:', token.teamId)
       return token
     },
 
@@ -186,21 +114,7 @@ export function getAuthOptions(): NextAuthOptions {
     },
   },
   debug: process.env.NODE_ENV === 'development',
-  }
-  return _authOptions
 }
-
-/**
- * Proxy lazy para compatibilidad con código existente que importa `authOptions`.
- * Delega todas las accesiones a la instancia construida on-demand.
- */
-export const authOptions: NextAuthOptions = new Proxy({} as NextAuthOptions, {
-  get(_target, prop) {
-    const opts = getAuthOptions()
-    const value = (opts as any)[prop]
-    return typeof value === 'function' ? value.bind(opts) : value
-  },
-})
 
 declare module 'next-auth' {
   interface Session {

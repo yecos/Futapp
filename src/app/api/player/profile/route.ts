@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
-import { supabase } from '@/lib/supabase-server'
-import { randomUUID } from 'crypto'
+import { db } from '@/lib/db'
 
 /**
  * POST /api/player/profile
@@ -25,37 +24,32 @@ export async function POST(req: NextRequest) {
     }
 
     // Verificar que no tenga ya un player
-    const { data: existing } = await supabase
-      .from('Player')
-      .select('id')
-      .eq('userId', userId)
-      .single()
+    const existing = await db.player.findUnique({
+      where: { userId },
+      select: { id: true },
+    })
 
     if (existing) {
       return NextResponse.json({ error: 'Ya tienes un perfil de jugador' }, { status: 400 })
     }
 
     // Si jerseyNumber es 0 o no se especifica, buscar el siguiente disponible
+    let finalJerseyNumber = jerseyNumber
     if (!jerseyNumber || jerseyNumber === 0) {
-      const { data: usedNumbers } = await supabase
-        .from('Player')
-        .select('jerseyNumber')
-        .eq('teamId', teamId)
-        .order('jerseyNumber', { ascending: true })
-
-      const usedSet = new Set((usedNumbers || []).map(p => p.jerseyNumber))
+      const usedNumbers = await db.player.findMany({
+        where: { teamId },
+        select: { jerseyNumber: true },
+      })
+      const usedSet = new Set(usedNumbers.map((p) => p.jerseyNumber))
       let nextNumber = 1
       while (usedSet.has(nextNumber)) nextNumber++
-
-      body.jerseyNumber = nextNumber
+      finalJerseyNumber = nextNumber
     } else {
       // Verificar que el dorsal no esté en uso
-      const { data: dorsalInUse } = await supabase
-        .from('Player')
-        .select('id, fullName')
-        .eq('teamId', teamId)
-        .eq('jerseyNumber', jerseyNumber)
-        .single()
+      const dorsalInUse = await db.player.findFirst({
+        where: { teamId, jerseyNumber },
+        select: { id: true, fullName: true },
+      })
 
       if (dorsalInUse) {
         return NextResponse.json(
@@ -65,55 +59,51 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const ts = new Date().toISOString()
-    const playerData: any = {
-      id: randomUUID(),
-      teamId,
-      userId,
-      firstName,
-      lastName,
-      fullName: fullName || `${firstName} ${lastName}`,
-      jerseyNumber: body.jerseyNumber || 0,
-      primaryPosition: primaryPosition || 'MEDIOCAMPISTA',
-      secondaryPosition: secondaryPosition || null,
-      age: age || 25,
-      dominantFoot: dominantFoot || 'DIESTRO',
-      height: height || null,
-      weight: weight || null,
-      phone: phone || null,
-      emergencyContact: emergencyContact || null,
-      status: 'DISPONIBLE',
-      matchesPlayed: 0,
-      goals: 0,
-      assists: 0,
-      yellowCards: 0,
-      redCards: 0,
-      trainingsAttended: 0,
-      trainingsTotal: 0,
-      createdAt: ts,
-      updatedAt: ts,
-    }
-
     // Copiar la foto del User si existe
-    const { data: user } = await supabase
-      .from('User')
-      .select('image')
-      .eq('id', userId)
-      .single()
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      select: { image: true },
+    })
 
-    if (user?.image) {
-      playerData.photoUrl = user.image
-    }
+    const player = await db.player.create({
+      data: {
+        teamId,
+        userId,
+        firstName,
+        lastName,
+        fullName: fullName || `${firstName} ${lastName}`,
+        jerseyNumber: finalJerseyNumber || 0,
+        primaryPosition: primaryPosition || 'MEDIOCAMPISTA',
+        secondaryPosition: secondaryPosition || null,
+        age: age || 25,
+        dominantFoot: dominantFoot || 'DIESTRO',
+        height: height || null,
+        weight: weight || null,
+        phone: phone || null,
+        emergencyContact: emergencyContact || null,
+        status: 'DISPONIBLE',
+        photoUrl: user?.image || null,
+        matchesPlayed: 0,
+        goals: 0,
+        assists: 0,
+        yellowCards: 0,
+        redCards: 0,
+        trainingsAttended: 0,
+        trainingsTotal: 0,
+        statPoints: 0,
+        totalPointsEarned: 0,
+        streak: 0,
+        maxStreak: 0,
+        basePAC: 0,
+        baseSHO: 0,
+        basePAS: 0,
+        baseDRI: 0,
+        baseDEF: 0,
+        basePHY: 0,
+      },
+    })
 
-    const { data, error } = await supabase
-      .from('Player')
-      .insert(playerData)
-      .select()
-      .single()
-
-    if (error) throw error
-
-    return NextResponse.json(data, { status: 201 })
+    return NextResponse.json(player, { status: 201 })
   } catch (error: any) {
     console.error('[API player/profile POST] Error:', error)
     return NextResponse.json(
@@ -141,24 +131,25 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'playerId requerido' }, { status: 400 })
     }
 
-    // Verificar que el player pertenece al usuario
-    const { data: player } = await supabase
-      .from('Player')
-      .select('id, userId')
-      .eq('id', playerId)
-      .single()
+    // Verificar que el player existe
+    const player = await db.player.findUnique({
+      where: { id: playerId },
+      select: { id: true, userId: true },
+    })
 
     if (!player) {
       return NextResponse.json({ error: 'Jugador no encontrado' }, { status: 404 })
     }
 
     // Verificar permisos: el propio usuario o admin
-    const { data: membership } = await supabase
-      .from('TeamMembership')
-      .select('role')
-      .eq('userId', session.user.id)
-      .eq('status', 'ACTIVO')
-      .single()
+    const membership = await db.teamMembership.findFirst({
+      where: {
+        userId: session.user.id,
+        status: 'ACTIVO',
+      },
+      orderBy: { joinedAt: 'desc' },
+      select: { role: true },
+    })
 
     if (player.userId !== session.user.id && membership?.role !== 'ADMIN') {
       return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
@@ -166,10 +157,7 @@ export async function PATCH(req: NextRequest) {
 
     const body = await req.json()
 
-    const updateData: any = {
-      updatedAt: new Date().toISOString(),
-    }
-
+    const updateData: any = {}
     const allowedFields = [
       'firstName', 'lastName', 'fullName', 'jerseyNumber', 'primaryPosition',
       'secondaryPosition', 'age', 'dominantFoot', 'height', 'weight',
@@ -184,25 +172,19 @@ export async function PATCH(req: NextRequest) {
 
     // Asegurar que fullName esté actualizado
     if (body.firstName || body.lastName) {
-      const { data: current } = await supabase
-        .from('Player')
-        .select('firstName, lastName')
-        .eq('id', playerId)
-        .single()
-
+      const current = await db.player.findUnique({
+        where: { id: playerId },
+        select: { firstName: true, lastName: true },
+      })
       updateData.fullName = `${body.firstName || current?.firstName || ''} ${body.lastName || current?.lastName || ''}`.trim()
     }
 
-    const { data, error } = await supabase
-      .from('Player')
-      .update(updateData)
-      .eq('id', playerId)
-      .select()
-      .single()
+    const updated = await db.player.update({
+      where: { id: playerId },
+      data: updateData,
+    })
 
-    if (error) throw error
-
-    return NextResponse.json(data)
+    return NextResponse.json(updated)
   } catch (error: any) {
     console.error('[API player/profile PATCH] Error:', error)
     return NextResponse.json(

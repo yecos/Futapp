@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { z } from 'zod'
 import { authOptions } from '@/lib/auth'
-import { supabase } from '@/lib/supabase-server'
+import { db } from '@/lib/db'
 
 const onboardingSchema = z.object({
   name: z.string().min(2).max(100),
@@ -24,7 +24,22 @@ export async function POST(req: NextRequest) {
     if (!session?.user) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
-    if (session.user.role !== 'ADMIN') {
+
+    // Consultar membership directamente desde la DB
+    const membership = await db.teamMembership.findFirst({
+      where: {
+        userId: session.user.id,
+        status: 'ACTIVO',
+      },
+      orderBy: { joinedAt: 'desc' },
+      select: { role: true, teamId: true },
+    })
+
+    if (!membership?.teamId) {
+      return NextResponse.json({ error: 'Sin equipo asignado' }, { status: 400 })
+    }
+
+    if (membership.role !== 'ADMIN') {
       return NextResponse.json({ error: 'Solo el admin puede configurar el equipo' }, { status: 403 })
     }
 
@@ -38,14 +53,9 @@ export async function POST(req: NextRequest) {
     }
     const data = parsed.data
 
-    const teamId = session.user.teamId
-    if (!teamId) {
-      return NextResponse.json({ error: 'Sin equipo asignado' }, { status: 400 })
-    }
-
-    const { error } = await supabase
-      .from('Team')
-      .update({
+    await db.team.update({
+      where: { id: membership.teamId },
+      data: {
         name: data.name,
         shortName: data.shortName.toUpperCase(),
         category: data.category,
@@ -58,15 +68,12 @@ export async function POST(req: NextRequest) {
         accountHolder: data.accountHolder,
         paymentInstructions: data.paymentInstructions,
         onboardingCompleted: true,
-        updatedAt: new Date().toISOString(),
-      })
-      .eq('id', teamId)
-
-    if (error) throw error
+      },
+    })
 
     return NextResponse.json({ success: true })
   } catch (error: any) {
-    console.error('[API team/onboarding] Error:', error)
+    console.error('[API team POST] Error:', error)
     return NextResponse.json(
       { error: error.message || 'Error interno del servidor' },
       { status: 500 }
@@ -81,29 +88,37 @@ export async function GET() {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    const teamId = session.user.teamId
-    if (!teamId) {
+    const membership = await db.teamMembership.findFirst({
+      where: {
+        userId: session.user.id,
+        status: 'ACTIVO',
+      },
+      orderBy: { joinedAt: 'desc' },
+      select: { teamId: true },
+    })
+
+    if (!membership?.teamId) {
       return NextResponse.json({ error: 'Sin equipo asignado' }, { status: 400 })
     }
 
-    const { data: team, error } = await supabase
-      .from('Team')
-      .select(`
-        id, name, shortName, category, coachName, primaryColor, secondaryColor,
-        foundedYear, logoUrl, description,
-        bankName, accountType, accountNumber, accountHolder, qrImageUrl,
-        paymentInstructions, onboardingCompleted
-      `)
-      .eq('id', teamId)
-      .single()
+    const team = await db.team.findUnique({
+      where: { id: membership.teamId },
+      select: {
+        id: true, name: true, shortName: true, category: true, coachName: true,
+        primaryColor: true, secondaryColor: true, foundedYear: true, logoUrl: true,
+        description: true, bankName: true, accountType: true, accountNumber: true,
+        accountHolder: true, qrImageUrl: true, paymentInstructions: true,
+        onboardingCompleted: true,
+      },
+    })
 
-    if (error) {
+    if (!team) {
       return NextResponse.json({ error: 'Equipo no encontrado' }, { status: 404 })
     }
 
     return NextResponse.json(team)
   } catch (error: any) {
-    console.error('[API team] Error:', error)
+    console.error('[API team GET] Error:', error)
     return NextResponse.json(
       { error: error.message || 'Error interno del servidor' },
       { status: 500 }
@@ -117,15 +132,25 @@ export async function PATCH(req: NextRequest) {
     if (!session?.user) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
-    if (session.user.role !== 'ADMIN') {
+
+    const membership = await db.teamMembership.findFirst({
+      where: {
+        userId: session.user.id,
+        status: 'ACTIVO',
+      },
+      orderBy: { joinedAt: 'desc' },
+      select: { role: true, teamId: true },
+    })
+
+    if (!membership?.teamId) {
+      return NextResponse.json({ error: 'Sin equipo asignado' }, { status: 400 })
+    }
+
+    if (membership.role !== 'ADMIN') {
       return NextResponse.json({ error: 'Solo el admin puede editar el equipo' }, { status: 403 })
     }
 
     const body = await req.json()
-    const teamId = session.user.teamId
-    if (!teamId) {
-      return NextResponse.json({ error: 'Sin equipo asignado' }, { status: 400 })
-    }
 
     const allowedFields = [
       'name', 'shortName', 'category', 'coachName', 'primaryColor', 'secondaryColor',
@@ -133,22 +158,18 @@ export async function PATCH(req: NextRequest) {
       'bankName', 'accountType', 'accountNumber', 'accountHolder', 'qrImageUrl',
       'paymentInstructions',
     ]
-    const updateData: any = { updatedAt: new Date().toISOString() }
+    const updateData: any = {}
     for (const field of allowedFields) {
       if (field in body) updateData[field] = body[field]
     }
     if (updateData.shortName) updateData.shortName = updateData.shortName.toUpperCase()
 
-    const { data, error } = await supabase
-      .from('Team')
-      .update(updateData)
-      .eq('id', teamId)
-      .select()
-      .single()
+    const updated = await db.team.update({
+      where: { id: membership.teamId },
+      data: updateData,
+    })
 
-    if (error) throw error
-
-    return NextResponse.json(data)
+    return NextResponse.json(updated)
   } catch (error: any) {
     console.error('[API team PATCH] Error:', error)
     return NextResponse.json(

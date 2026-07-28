@@ -1,4 +1,7 @@
-import { supabase } from '@/lib/supabase-server'
+import { getServerSession } from 'next-auth/next'
+import { redirect } from 'next/navigation'
+import { authOptions } from '@/lib/auth'
+import { db } from '@/lib/db'
 import { InviteLanding } from '@/components/auth/invite-landing'
 
 export default async function InvitePage({
@@ -7,16 +10,12 @@ export default async function InvitePage({
   params: Promise<{ token: string }>
 }) {
   const { token } = await params
-  const { data: invite } = await supabase
-    .from('InviteToken')
-    .select(`
-      token, role, teamId, usedBy, expiresAt,
-      team:Team(name)
-    `)
-    .eq('token', token)
-    .single()
+  const invite = await db.inviteToken.findUnique({
+    where: { token },
+    include: { team: { select: { name: true } } },
+  })
 
-  if (!invite || invite.usedBy || new Date(invite.expiresAt) < new Date()) {
+  if (!invite || invite.usedBy || invite.expiresAt < new Date()) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
         <div className="text-center max-w-md">
@@ -32,7 +31,7 @@ export default async function InvitePage({
   return (
     <InviteLanding
       token={invite.token}
-      teamName={(invite.team as any)?.name || 'Equipo'}
+      teamName={invite.team.name}
       role={invite.role}
     />
   )

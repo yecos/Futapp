@@ -1,49 +1,51 @@
 import { getServerSession } from 'next-auth/next'
 import { redirect } from 'next/navigation'
 import { authOptions } from '@/lib/auth'
-import { supabase } from '@/lib/supabase-server'
+import { db } from '@/lib/db'
 import { AdminPaymentsView } from '@/components/payments/admin-payments-view'
 
 export default async function AdminPagosPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
 
-  // Verificar rol desde DB (no del JWT que puede estar desactualizado)
-  const { data: memberships } = await supabase
-    .from('TeamMembership')
-    .select('role, teamId')
-    .eq('userId', session.user.id)
-    .eq('status', 'ACTIVO')
-    .limit(1)
+  // Verificar rol desde DB
+  const membership = await db.teamMembership.findFirst({
+    where: {
+      userId: session.user.id,
+      status: 'ACTIVO',
+    },
+    orderBy: { joinedAt: 'desc' },
+    select: { role: true, teamId: true },
+  })
 
-  const membership = memberships?.[0]
   if (!membership?.teamId) redirect('/choose-team')
   if (membership.role !== 'ADMIN') redirect('/')
 
   const teamId = membership.teamId
 
-  const { data: payments } = await supabase
-    .from('Payment')
-    .select(`
-      *,
-      receipts:PaymentReceipt(
-        *,
-        player:Player(id, fullName, jerseyNumber)
-      )
-    `)
-    .eq('teamId', teamId)
-    .order('dueDate', { ascending: false })
+  const [payments, players] = await Promise.all([
+    db.payment.findMany({
+      where: { teamId },
+      include: {
+        receipts: {
+          include: {
+            player: { select: { id: true, fullName: true, jerseyNumber: true } },
+          },
+        },
+      },
+      orderBy: { dueDate: 'desc' },
+    }),
+    db.player.findMany({
+      where: { teamId },
+      select: { id: true, fullName: true, jerseyNumber: true, primaryPosition: true },
+      orderBy: { jerseyNumber: 'asc' },
+    }),
+  ])
 
-  const { data: players } = await supabase
-    .from('Player')
-    .select('id, fullName, jerseyNumber, primaryPosition')
-    .eq('teamId', teamId)
-    .order('jerseyNumber', { ascending: true })
-
-  const paymentsList = (payments || []).map((p: any) => ({
+  const paymentsList = payments.map((p) => ({
     ...p,
     amount: Number(p.amount),
-    receipts: (p.receipts || []).map((r: any) => ({
+    receipts: p.receipts.map((r) => ({
       ...r,
       amount: r.amount ? Number(r.amount) : null,
     })),
@@ -60,8 +62,8 @@ export default async function AdminPagosPage() {
 
   return (
     <AdminPaymentsView
-      payments={paymentsList}
-      players={players || []}
+      payments={paymentsList as any}
+      players={players as any}
       totalRecaudado={totalRecaudado}
       pendientesVerificacion={pendientesVerificacion}
     />

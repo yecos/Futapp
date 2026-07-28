@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
-import { randomUUID } from 'crypto'
 import { authOptions } from '@/lib/auth'
-import { supabase } from '@/lib/supabase-server'
+import { db } from '@/lib/db'
 
 const REASONS = ['Lesión', 'Trabajo', 'Familia', 'Estudio', 'Otro']
 
@@ -23,63 +22,61 @@ export async function POST(req: NextRequest) {
     }
 
     // Buscar player
-    const { data: player } = await supabase
-      .from('Player')
-      .select('id, streak, trainingsTotal')
-      .eq('userId', session.user.id)
-      .single()
+    const player = await db.player.findUnique({
+      where: { userId: session.user.id },
+      select: { id: true, streak: true, trainingsTotal: true },
+    })
 
     if (!player) return NextResponse.json({ error: 'No tienes perfil de jugador' }, { status: 400 })
 
     // Verificar que no haya hecho check-in ya
-    const { data: existingCheckin } = await supabase
-      .from('CheckIn')
-      .select('id')
-      .eq('eventId', eventId)
-      .eq('playerId', player.id)
-      .single()
+    const existingCheckin = await db.checkIn.findUnique({
+      where: { eventId_playerId: { eventId, playerId: player.id } },
+      select: { id: true },
+    })
 
     if (existingCheckin) {
       return NextResponse.json({ error: 'Ya hiciste check-in en este evento' }, { status: 400 })
     }
 
     // Verificar que no haya justificado ya
-    const { data: existingAbsence } = await supabase
-      .from('Absence')
-      .select('id')
-      .eq('eventId', eventId)
-      .eq('playerId', player.id)
-      .single()
+    const existingAbsence = await db.absence.findUnique({
+      where: { eventId_playerId: { eventId, playerId: player.id } },
+      select: { id: true },
+    })
 
     if (existingAbsence) {
       return NextResponse.json({ error: 'Ya justificaste ausencia para este evento' }, { status: 400 })
     }
 
     // Obtener evento para verificar tipo
-    const { data: event } = await supabase
-      .from('Event')
-      .select('type')
-      .eq('id', eventId)
-      .single()
+    const event = await db.event.findUnique({
+      where: { id: eventId },
+      select: { type: true },
+    })
 
     if (!event) return NextResponse.json({ error: 'Evento no encontrado' }, { status: 404 })
 
     // Crear justificación
-    await supabase.from('Absence').insert({
-      id: randomUUID(),
-      eventId,
-      playerId: player.id,
-      userId: session.user.id,
-      reason,
+    await db.absence.create({
+      data: {
+        eventId,
+        playerId: player.id,
+        userId: session.user.id,
+        reason,
+      },
     })
 
     // Si es entrenamiento, romper racha (sin penalización porque justificó)
     const isTraining = event.type === 'ENTRENAMIENTO'
     if (isTraining && player.streak > 0) {
-      await supabase.from('Player').update({
-        streak: 0,
-        trainingsTotal: (player.trainingsTotal || 0) + 1,
-      }).eq('id', player.id)
+      await db.player.update({
+        where: { id: player.id },
+        data: {
+          streak: 0,
+          trainingsTotal: (player.trainingsTotal || 0) + 1,
+        },
+      })
     }
 
     return NextResponse.json({

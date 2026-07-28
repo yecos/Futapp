@@ -1,7 +1,7 @@
 import { getServerSession } from 'next-auth/next'
 import { redirect } from 'next/navigation'
 import { authOptions } from '@/lib/auth'
-import { supabase } from '@/lib/supabase-server'
+import { db } from '@/lib/db'
 import { PlayerProfile } from '@/components/views/player-profile'
 
 export default async function PlayerProfilePage({
@@ -15,35 +15,34 @@ export default async function PlayerProfilePage({
   const { id } = await params
 
   // Verificar membership
-  const { data: memberships } = await supabase
-    .from('TeamMembership')
-    .select('teamId, role')
-    .eq('userId', session.user.id)
-    .eq('status', 'ACTIVO')
-    .limit(1)
+  const membership = await db.teamMembership.findFirst({
+    where: {
+      userId: session.user.id,
+      status: 'ACTIVO',
+    },
+    orderBy: { joinedAt: 'desc' },
+    select: { teamId: true, role: true },
+  })
 
-  const membership = memberships?.[0]
   if (!membership?.teamId) redirect('/choose-team')
 
-  // Obtener jugador con stats de partidos
-  const { data: player } = await supabase
-    .from('Player')
-    .select('*')
-    .eq('id', id)
-    .eq('teamId', membership.teamId)
-    .single()
+  // Obtener jugador
+  const player = await db.player.findFirst({
+    where: { id, teamId: membership.teamId },
+  })
 
   if (!player) redirect('/plantilla')
 
   // Obtener stats de partidos del jugador
-  const { data: matchStats } = await supabase
-    .from('MatchStat')
-    .select(`
-      goals, assists, minutesPlayed, yellowCards, redCards, saves, shots, recoveries, isMotm,
-      event:Event(title, date, opponent, isHome, homeScore, awayScore)
-    `)
-    .eq('playerId', id)
-    .order('date', { ascending: false, foreignTable: 'Event' })
+  const matchStats = await db.matchStat.findMany({
+    where: { playerId: id },
+    include: {
+      event: {
+        select: { title: true, date: true, opponent: true, isHome: true, homeScore: true, awayScore: true },
+      },
+    },
+    orderBy: { event: { date: 'desc' } },
+  })
 
-  return <PlayerProfile player={player} matchStats={matchStats || []} userRole={membership.role} />
+  return <PlayerProfile player={player as any} matchStats={matchStats as any} userRole={membership.role} />
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase-server'
+import { db } from '@/lib/db'
 
 /**
  * GET /api/cron/penalize
@@ -20,14 +20,15 @@ export async function GET(req: NextRequest) {
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000)
     const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000)
 
-    const { data: recentEvents } = await supabase
-      .from('Event')
-      .select('id, teamId, type, date, title')
-      .eq('status', 'PROGRAMADO')
-      .lt('date', oneHourAgo.toISOString())
-      .gt('date', twoHoursAgo.toISOString())
+    const recentEvents = await db.event.findMany({
+      where: {
+        status: 'PROGRAMADO',
+        date: { lt: oneHourAgo, gt: twoHoursAgo },
+      },
+      select: { id: true, teamId: true, type: true, date: true, title: true },
+    })
 
-    if (!recentEvents || recentEvents.length === 0) {
+    if (recentEvents.length === 0) {
       return NextResponse.json({ success: true, message: 'No events to process', stats: { eventsChecked: 0, playersPenalized: 0 } })
     }
 
@@ -35,28 +36,30 @@ export async function GET(req: NextRequest) {
 
     for (const event of recentEvents) {
       // Obtener todos los jugadores del equipo
-      const { data: players } = await supabase
-        .from('Player')
-        .select('id, statPoints, totalPointsEarned, streak, maxStreak, fullName, trainingsTotal, userId')
-        .eq('teamId', event.teamId)
+      const players = await db.player.findMany({
+        where: { teamId: event.teamId },
+        select: {
+          id: true, statPoints: true, totalPointsEarned: true,
+          streak: true, maxStreak: true, fullName: true,
+          trainingsTotal: true, userId: true,
+        },
+      })
 
-      if (!players) continue
+      if (players.length === 0) continue
 
       // Obtener check-ins de este evento
-      const { data: checkins } = await supabase
-        .from('CheckIn')
-        .select('playerId')
-        .eq('eventId', event.id)
-
-      const checkedInIds = new Set((checkins || []).map(c => c.playerId))
+      const checkins = await db.checkIn.findMany({
+        where: { eventId: event.id },
+        select: { playerId: true },
+      })
+      const checkedInIds = new Set(checkins.map((c) => c.playerId))
 
       // Obtener ausencias justificadas
-      const { data: absences } = await supabase
-        .from('Absence')
-        .select('playerId')
-        .eq('eventId', event.id)
-
-      const justifiedIds = new Set((absences || []).map(a => a.playerId))
+      const absences = await db.absence.findMany({
+        where: { eventId: event.id },
+        select: { playerId: true },
+      })
+      const justifiedIds = new Set(absences.map((a) => a.playerId))
 
       const isTraining = event.type === 'ENTRENAMIENTO'
       const penalty = isTraining ? 2 : 5
@@ -67,36 +70,41 @@ export async function GET(req: NextRequest) {
 
         // Penalizar
         const newStatPoints = Math.max(0, (player.statPoints || 0) - penalty)
-        const newStreak = isTraining ? 0 : (player.streak || 0) // Solo rompe racha si es entrenamiento
+        const newStreak = isTraining ? 0 : (player.streak || 0)
 
-        await supabase.from('Player').update({
-          statPoints: newStatPoints,
-          streak: newStreak,
-          trainingsTotal: isTraining ? (player.trainingsTotal || 0) + 1 : player.trainingsTotal,
-          updatedAt: now.toISOString(),
-        }).eq('id', player.id)
-
-        // Crear notificación
-        await supabase.from('Notification').insert({
-          id: crypto.randomUUID(),
-          teamId: event.teamId,
-          userId: player.userId || player.id,
-          type: 'PENALTY',
-          title: `Penalización: -${penalty} pts`,
-          body: `No asististe a "${event.title}" y no justificaste. -${penalty} puntos.`,
-          channel: 'IN_APP',
-          status: 'ENVIADA',
-          sentAt: now.toISOString(),
+        await db.player.update({
+          where: { id: player.id },
+          data: {
+            statPoints: newStatPoints,
+            streak: newStreak,
+            trainingsTotal: isTraining ? (player.trainingsTotal || 0) + 1 : player.trainingsTotal,
+          },
         })
+
+        // Crear notificación (solo si tiene userId)
+        if (player.userId) {
+          await db.notification.create({
+            data: {
+              teamId: event.teamId,
+              userId: player.userId,
+              type: 'PENALTY',
+              title: `Penalización: -${penalty} pts`,
+              body: `No asististe a "${event.title}" y no justificaste. -${penalty} puntos.`,
+              channel: 'IN_APP',
+              status: 'ENVIADA',
+              sentAt: now,
+            },
+          })
+        }
 
         playersPenalized++
       }
 
       // Marcar evento como COMPLETADO
-      await supabase.from('Event').update({
-        status: 'COMPLETADO',
-        updatedAt: now.toISOString(),
-      }).eq('id', event.id)
+      await db.event.update({
+        where: { id: event.id },
+        data: { status: 'COMPLETADO' },
+      })
     }
 
     return NextResponse.json({

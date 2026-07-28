@@ -1,31 +1,29 @@
 import { getServerSession } from 'next-auth/next'
 import { redirect } from 'next/navigation'
 import { authOptions } from '@/lib/auth'
-import { supabase } from '@/lib/supabase-server'
+import { db } from '@/lib/db'
 import { TeamSettingsView } from '@/components/admin/team-settings-view'
 
 export default async function AdminEquipoPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
 
-  // Verificar rol desde DB (no del JWT que puede estar desactualizado)
-  const { data: memberships } = await supabase
-    .from('TeamMembership')
-    .select('role, teamId')
-    .eq('userId', session.user.id)
-    .eq('status', 'ACTIVO')
-    .limit(1)
+  // Verificar rol desde DB
+  const membership = await db.teamMembership.findFirst({
+    where: {
+      userId: session.user.id,
+      status: 'ACTIVO',
+    },
+    orderBy: { joinedAt: 'desc' },
+    select: { role: true, teamId: true },
+  })
 
-  const membership = memberships?.[0]
   if (!membership?.teamId) redirect('/choose-team')
   if (membership.role !== 'ADMIN') redirect('/')
 
-  const teamId = membership.teamId
-  const { data: team } = await supabase
-    .from('Team')
-    .select('*')
-    .eq('id', teamId)
-    .single()
+  const team = await db.team.findUnique({
+    where: { id: membership.teamId },
+  })
 
   if (!team) redirect('/')
 

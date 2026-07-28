@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
-import { supabase } from '@/lib/supabase-server'
+import { db } from '@/lib/db'
 
 const MAX_STAT = 99
 const STAT_KEYS = ['basePAC', 'baseSHO', 'basePAS', 'baseDRI', 'baseDEF', 'basePHY'] as const
@@ -9,8 +9,6 @@ const STAT_KEYS = ['basePAC', 'baseSHO', 'basePAS', 'baseDRI', 'baseDEF', 'baseP
 /**
  * POST /api/player/stats
  * Distribuye puntos disponibles en atributos.
- * Body: { pac: 5, sho: 3, pas: 0, dri: 2, def: 0, phy: 1 }
- * Cada valor es cuántos puntos asignar a ese stat.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -28,11 +26,13 @@ export async function POST(req: NextRequest) {
     }
 
     // Buscar player
-    const { data: player } = await supabase
-      .from('Player')
-      .select('id, statPoints, basePAC, baseSHO, basePAS, baseDRI, baseDEF, basePHY')
-      .eq('userId', session.user.id)
-      .single()
+    const player = await db.player.findUnique({
+      where: { userId: session.user.id },
+      select: {
+        id: true, statPoints: true,
+        basePAC: true, baseSHO: true, basePAS: true, baseDRI: true, baseDEF: true, basePHY: true,
+      },
+    })
 
     if (!player) return NextResponse.json({ error: 'No tienes perfil de jugador' }, { status: 400 })
 
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Verificar topes
-    const update: any = { updatedAt: new Date().toISOString() }
+    const update: any = {}
     for (const key of STAT_KEYS) {
       const current = player[key] as number
       const adding = allocations[key]
@@ -60,18 +60,14 @@ export async function POST(req: NextRequest) {
     // Restar puntos gastados
     update.statPoints = player.statPoints - totalRequested
 
-    const { data, error } = await supabase
-      .from('Player')
-      .update(update)
-      .eq('id', player.id)
-      .select()
-      .single()
-
-    if (error) throw error
+    const updated = await db.player.update({
+      where: { id: player.id },
+      data: update,
+    })
 
     return NextResponse.json({
       success: true,
-      player: data,
+      player: updated,
       pointsSpent: totalRequested,
       pointsRemaining: update.statPoints,
       message: `${totalRequested} puntos distribuidos correctamente`,
