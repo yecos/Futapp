@@ -1,5 +1,9 @@
 import { PrismaClient } from '@prisma/client'
 import { randomUUID } from 'crypto'
+import { config } from 'dotenv'
+
+// Cargar variables de entorno desde .env (necesario para tsx)
+config()
 
 const prisma = new PrismaClient()
 

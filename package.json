@@ -2,7 +2,7 @@
   "name": "futapp",
   "version": "1.0.0",
   "private": true,
-  "description": "Centro de organizaci\u00f3n, comunicaci\u00f3n y seguimiento deportivo para equipos de f\u00fatbol.",
+  "description": "Centro de organización, comunicación y seguimiento deportivo para equipos de fútbol.",
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
@@ -56,6 +56,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "date-fns": "^4.1.0",
+    "dotenv": "^17.4.2",
     "embla-carousel-react": "^8.6.0",
     "framer-motion": "^12.23.2",
     "input-otp": "^1.4.2",
