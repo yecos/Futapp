@@ -37,6 +37,14 @@ export function InviteLanding({ token, teamName, role }: InviteLandingProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token }),
       })
+      const contentType = res.headers.get('content-type') || ''
+      if (!contentType.includes('application/json')) {
+        toast.error('Tu sesión expiró. Serás redirigido al login.')
+        setTimeout(() => {
+          window.location.href = '/login?callbackUrl=' + encodeURIComponent('/invite/' + token)
+        }, 1500)
+        return
+      }
       if (!res.ok) {
         const err = await res.json()
         throw new Error(err.error || 'Error al unirse')

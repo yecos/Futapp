@@ -8,8 +8,9 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import {
-  Shield, Plus, KeyRound, ArrowRight, Loader2, Check,
+  Shield, Plus, KeyRound, ArrowRight, Loader2, Check, LogOut,
 } from 'lucide-react'
+import { signOut } from 'next-auth/react'
 import { toast } from 'sonner'
 
 type View = 'choose' | 'create' | 'join'
@@ -42,11 +43,19 @@ export function ChooseTeamClient({ userName }: { userName: string }) {
           coachName: userName || 'Entrenador',
         }),
       })
+      // Si recibimos HTML (redirect del middleware), la sesión expiró
+      const contentType = res.headers.get('content-type') || ''
+      if (!contentType.includes('application/json')) {
+        toast.error('Tu sesión expiró. Serás redirigido al login.')
+        setTimeout(() => { window.location.href = '/login' }, 1500)
+        return
+      }
       if (!res.ok) {
         const err = await res.json()
         throw new Error(err.error || 'Error al crear equipo')
       }
       toast.success('¡Equipo creado!')
+      // Forzar refresh completo para que el JWT se actualice con el nuevo teamId
       window.location.href = '/onboarding'
     } catch (err: any) {
       toast.error(err.message)
@@ -66,6 +75,12 @@ export function ChooseTeamClient({ userName }: { userName: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: inviteCode }),
       })
+      const contentType = res.headers.get('content-type') || ''
+      if (!contentType.includes('application/json')) {
+        toast.error('Tu sesión expiró. Serás redirigido al login.')
+        setTimeout(() => { window.location.href = '/login' }, 1500)
+        return
+      }
       if (!res.ok) {
         const err = await res.json()
         throw new Error(err.error || 'Error al unirse')
@@ -80,6 +95,16 @@ export function ChooseTeamClient({ userName }: { userName: string }) {
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-deportivo">
+      {/* Botón de cerrar sesión en esquina superior derecha */}
+      <button
+        onClick={() => signOut({ callbackUrl: '/login' })}
+        className="absolute top-4 right-4 z-50 inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-card/50 border border-white/5 hover:bg-card text-muted-foreground hover:text-foreground transition-colors text-sm"
+        title="Cerrar sesión"
+      >
+        <LogOut className="h-4 w-4" />
+        <span className="hidden sm:inline">Cerrar sesión</span>
+      </button>
+
       <div className="absolute inset-0">
         <div className="absolute top-0 left-1/4 h-96 w-96 rounded-full bg-primary/20 blur-3xl" />
         <div className="absolute bottom-0 right-1/4 h-96 w-96 rounded-full bg-emerald-500/10 blur-3xl" />

@@ -8,7 +8,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent } from '@/components/ui/card'
-import { Shield, Save, Loader2, Banknote, Palette } from 'lucide-react'
+import { Shield, Save, Loader2, Banknote, Palette, LogOut } from 'lucide-react'
+import { signOut } from 'next-auth/react'
 import { toast } from 'sonner'
 
 interface OnboardingViewProps {
@@ -44,15 +45,20 @@ export function OnboardingView({ teamId, teamName }: OnboardingViewProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
       })
+      const contentType = res.headers.get('content-type') || ''
+      if (!contentType.includes('application/json')) {
+        toast.error('Tu sesión expiró. Serás redirigido al login.')
+        setTimeout(() => { window.location.href = '/login' }, 1500)
+        return
+      }
       if (!res.ok) {
         const err = await res.json()
         throw new Error(err.error || 'Error al guardar')
       }
-      await update({ forceRefresh: true })
       toast.success('¡Equipo configurado!')
+      // Forzar refresh completo para que el JWT se actualice con onboardingCompleted=true
       await new Promise(r => setTimeout(r, 800))
-      router.push('/')
-      router.refresh()
+      window.location.href = '/'
     } catch (err: any) {
       toast.error(err.message)
     } finally {
@@ -61,7 +67,17 @@ export function OnboardingView({ teamId, teamName }: OnboardingViewProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-deportivo py-8 px-4">
+    <div className="relative min-h-screen bg-gradient-deportivo py-8 px-4">
+      {/* Botón de cerrar sesión */}
+      <button
+        onClick={() => signOut({ callbackUrl: '/login' })}
+        className="fixed top-4 right-4 z-50 inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-card/50 border border-white/5 hover:bg-card text-muted-foreground hover:text-foreground transition-colors text-sm"
+        title="Cerrar sesión"
+      >
+        <LogOut className="h-4 w-4" />
+        <span className="hidden sm:inline">Cerrar sesión</span>
+      </button>
+
       <div className="mx-auto max-w-2xl">
         {/* Header */}
         <div className="text-center mb-6">

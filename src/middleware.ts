@@ -67,6 +67,10 @@ export default withAuth(
 
 export const config = {
   matcher: [
-    '/((?!api/auth|api/cron|api/debug|api/player|_next/static|_next/image|favicon.ico|login|invite|pending|onboarding|choose-team|leave-team|auth-error|mi-perfil|public|logo.svg|manifest.json|robots.txt).*)',
+    // Excluir TODAS las API routes del middleware — las API manejan su propia
+    // autenticación con getServerSession y devuelven JSON 401, no redirects.
+    // Solo se aplica middleware a páginas (Server Components) que necesitan
+    // redirect por flujo de usuario (choose-team, pending, onboarding, etc.)
+    '/((?!api|_next/static|_next/image|favicon.ico|login|invite|pending|onboarding|choose-team|leave-team|auth-error|mi-perfil|public|logo.svg|manifest.json|robots.txt).*)',
   ],
 }

@@ -22,14 +22,19 @@ export default function PendingPage() {
     setLeaving(true)
     try {
       const res = await fetch('/api/team/leave', { method: 'POST' })
+      const contentType = res.headers.get('content-type') || ''
+      if (!contentType.includes('application/json')) {
+        toast.error('Tu sesión expiró. Serás redirigido al login.')
+        setTimeout(() => { window.location.href = '/login' }, 1500)
+        return
+      }
       if (!res.ok) {
         const err = await res.json()
         throw new Error(err.error || 'Error al salir')
       }
-      await update()
-      toast.success('Saliste del equipo')
-      router.push('/choose-team')
-      router.refresh()
+      toast.success('Saliste del equipo. Redirigiendo...')
+      // Forzar refresh completo para que el JWT se actualice sin teamId
+      setTimeout(() => { window.location.href = '/choose-team' }, 800)
     } catch (err: any) {
       toast.error(err.message)
     } finally {
