@@ -6,6 +6,9 @@ import { Button } from '@/components/ui/button'
 import { Calendar, Clock, MapPin, ArrowLeft, Plus } from 'lucide-react'
 import Link from 'next/link'
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
+import { CreateEventDialog } from '@/components/events/create-event-dialog'
 
 interface EventData {
   id: string
@@ -39,12 +42,17 @@ const TYPE_COLORS: Record<string, string> = {
 
 export function CalendarView({ events }: { events: EventData[] }) {
   const [tab, setTab] = useState<'proximos' | 'pasados'>('proximos')
+  const [showCreate, setShowCreate] = useState(false)
+  const router = useRouter()
+  const { data: session } = useSession()
 
   const now = new Date()
   const proximos = events.filter(e => new Date(e.date) >= now && e.status === 'PROGRAMADO')
   const pasados = events.filter(e => new Date(e.date) < now || e.status === 'COMPLETADO')
 
   const lista = tab === 'proximos' ? proximos : pasados
+
+  const canCreate = ['ADMIN', 'ENTRENADOR', 'CUERPO_TECNICO'].includes(session?.user?.role || '')
 
   return (
     <div className="min-h-screen bg-gradient-deportivo">
@@ -53,7 +61,15 @@ export function CalendarView({ events }: { events: EventData[] }) {
           <Link href="/" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground">
             <ArrowLeft className="h-4 w-4 mr-1" /> Volver
           </Link>
-          <h1 className="text-xl font-bold mt-2">Calendario</h1>
+          <div className="flex items-center justify-between mt-2">
+            <h1 className="text-xl font-bold">Calendario</h1>
+            {canCreate && (
+              <Button size="sm" onClick={() => setShowCreate(true)}>
+                <Plus className="h-4 w-4 mr-1" />
+                Crear evento
+              </Button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -78,6 +94,11 @@ export function CalendarView({ events }: { events: EventData[] }) {
             <Card><CardContent className="py-12 text-center text-muted-foreground">
               <Calendar className="h-10 w-10 mx-auto mb-3 opacity-40" />
               <p>No hay eventos {tab === 'proximos' ? 'próximos' : 'finalizados'}.</p>
+              {canCreate && tab === 'proximos' && (
+                <Button size="sm" className="mt-3" onClick={() => setShowCreate(true)}>
+                  <Plus className="h-4 w-4 mr-1" /> Crear evento
+                </Button>
+              )}
             </CardContent></Card>
           )}
 
@@ -85,7 +106,12 @@ export function CalendarView({ events }: { events: EventData[] }) {
             const d = new Date(event.date)
             const isPast = event.status === 'COMPLETADO'
             return (
-              <Card key={event.id} className="border-white/5 bg-gradient-card card-hover animate-fade-in-up" style={{ animationDelay: `${i * 60}ms` }}>
+              <Card
+                key={event.id}
+                className="border-white/5 bg-gradient-card card-hover animate-fade-in-up cursor-pointer"
+                style={{ animationDelay: `${i * 60}ms` }}
+                onClick={() => router.push(`/eventos/${event.id}`)}
+              >
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
                     <div className="flex flex-col items-center justify-center w-14 shrink-0 rounded-lg bg-primary/15 py-2">
@@ -104,6 +130,11 @@ export function CalendarView({ events }: { events: EventData[] }) {
                             {event.homeScore} - {event.awayScore}
                           </Badge>
                         )}
+                        {event.opponent && (
+                          <Badge variant="outline" className="text-[10px]">
+                            {event.isHome ? '🏠 Local' : '✈️ Visitante'} vs {event.opponent}
+                          </Badge>
+                        )}
                       </div>
                       <h3 className="font-semibold text-sm">{event.title}</h3>
                       <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground flex-wrap">
@@ -118,6 +149,12 @@ export function CalendarView({ events }: { events: EventData[] }) {
           })}
         </div>
       </main>
+
+      <CreateEventDialog
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreated={() => router.refresh()}
+      />
     </div>
   )
 }

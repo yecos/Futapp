@@ -1,5 +1,6 @@
 import { getServerSession } from 'next-auth/next'
 import { redirect } from 'next/navigation'
+import { Suspense } from 'react'
 import { authOptions } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { CallupsView } from '@/components/views/callups'
@@ -33,5 +34,9 @@ export default async function ConvocatoriasPage() {
     }),
   ])
 
-  return <CallupsView matches={matches as any} players={players as any} />
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="h-12 w-12 rounded-full border-4 border-primary border-t-transparent animate-spin" /></div>}>
+      <CallupsView matches={matches as any} players={players as any} />
+    </Suspense>
+  )
 }

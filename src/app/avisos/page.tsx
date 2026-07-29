@@ -22,6 +22,13 @@ export default async function AvisosPage() {
   const announcements = await db.announcement.findMany({
     where: { teamId: membership.teamId },
     orderBy: [{ pinned: 'desc' }, { publishedAt: 'desc' }],
+    include: {
+      author: { select: { name: true, image: true } },
+      reads: {
+        where: { userId: session.user.id },
+        select: { id: true },
+      },
+    },
   })
 
   return <AnnouncementsView announcements={announcements as any} />
