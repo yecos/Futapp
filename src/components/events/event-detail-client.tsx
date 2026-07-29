@@ -11,6 +11,7 @@ import {
   ArrowLeft, Clock, MapPin, Calendar, CheckCircle2, XCircle, HelpCircle,
   Trophy, Users, ClipboardList, Shield, Loader2, Plus,
 } from 'lucide-react'
+import { EventChat } from '@/components/events/event-chat'
 
 interface EventDetailClientProps {
   event: any
@@ -240,6 +241,9 @@ export function EventDetailClient({ event, myRole, myPlayerId }: EventDetailClie
             </CardContent>
           </Card>
         )}
+
+        {/* Chat del evento */}
+        <EventChat eventId={event.id} />
 
         {/* Acciones de management */}
         {canManage && (

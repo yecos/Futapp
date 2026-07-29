@@ -156,6 +156,7 @@ model User {
   notifications     Notification[]
   invitesCreated    InviteToken[]
   inviteUsed        InviteToken?     @relation("InviteTokenUsed")
+  eventMessages     EventMessage[]
 
   @@index([email])
 }
@@ -356,6 +357,7 @@ model Event {
   matchStats  MatchStat[]
   checkIns    CheckIn[]
   absences    Absence[]
+  messages    EventMessage[]
 
   @@index([teamId, date])
   @@index([teamId, status, date])
@@ -571,6 +573,24 @@ model Notification {
 
   @@index([userId, status])
   @@index([teamId, type, status])
+}
+
+// =====================================================
+// EVENT MESSAGES (Chat por evento)
+// =====================================================
+
+model EventMessage {
+  id        String   @id @default(cuid())
+  eventId   String
+  userId    String
+  body      String   @db.Text
+  createdAt DateTime @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, createdAt])
+  @@index([userId])
 }
 
 // =====================================================

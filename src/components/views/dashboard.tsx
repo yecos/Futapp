@@ -106,6 +106,7 @@ export function DashboardView({ teamName, teamShortName, currentRole, initialDat
     { href: '/plantilla', icon: Users, label: 'Plantilla', desc: 'Jugadores y perfiles', iconBg: 'bg-emerald-500/20 text-emerald-400' },
     { href: '/convocatorias', icon: ClipboardList, label: 'Convocatorias', desc: 'Alineaciones tácticas', iconBg: 'bg-violet-500/20 text-violet-400' },
     { href: '/resultados', icon: Trophy, label: 'Resultados', desc: 'Partidos y estadísticas', iconBg: 'bg-amber-500/20 text-amber-400' },
+    { href: '/estadisticas', icon: TrendingUp, label: 'Estadísticas', desc: 'Gráficos y análisis', iconBg: 'bg-purple-500/20 text-purple-400' },
     { href: '/avisos', icon: Bell, label: 'Avisos', desc: 'Anuncios del equipo', iconBg: 'bg-rose-500/20 text-rose-400' },
     { href: '/pagos', icon: CreditCard, label: 'Mis Pagos', desc: 'Mensualidades y cobros', iconBg: 'bg-teal-500/20 text-teal-400' },
   ]
