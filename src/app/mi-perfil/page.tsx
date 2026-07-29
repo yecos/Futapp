@@ -20,7 +20,7 @@ export default async function MiPerfilPage() {
 
   if (!membership?.teamId) redirect('/choose-team')
 
-  // Buscar el perfil de jugador vinculado al user
+  // Buscar el perfil de jugador vinculado al user con todos los campos RPG
   const player = await db.player.findUnique({
     where: { userId: session.user.id },
   })
@@ -33,7 +33,7 @@ export default async function MiPerfilPage() {
 
   return (
     <MyProfileView
-      player={player}
+      player={player as any}
       teamName={team?.name || ''}
       teamShortName={team?.shortName || ''}
       userRole={membership.role}

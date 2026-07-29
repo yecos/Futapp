@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea'
 import {
   ArrowLeft, Camera, Save, Loader2, User, Shield, Phone,
   Footprints, Ruler, Weight, AlertTriangle, Check, X,
+  Zap, Target, Brain, Wind, Swords, Heart, Plus, Minus, TrendingUp, Flame, Crown,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import Link from 'next/link'
@@ -377,6 +378,11 @@ export function MyProfileView({
           </CardContent>
         </Card>
 
+        {/* === RPG / GAMIFICACIÓN === */}
+        {player && (
+          <RpgStatsCard player={player} />
+        )}
+
         {/* === GUARDAR === */}
         <Button
           onClick={handleSave}
@@ -398,5 +404,234 @@ export function MyProfileView({
         </Button>
       </main>
     </div>
+  )
+}
+
+// =====================================================
+// COMPONENTE: Stats RPG con sliders para asignar puntos
+// =====================================================
+
+const STAT_CONFIG = [
+  { key: 'basePAC', label: 'Ritmo', icon: Wind, color: 'text-sky-400', bg: 'bg-sky-500/20' },
+  { key: 'baseSHO', label: 'Disparo', icon: Target, color: 'text-rose-400', bg: 'bg-rose-500/20' },
+  { key: 'basePAS', label: 'Pase', icon: Brain, color: 'text-emerald-400', bg: 'bg-emerald-500/20' },
+  { key: 'baseDRI', label: 'Regate', icon: Zap, color: 'text-violet-400', bg: 'bg-violet-500/20' },
+  { key: 'baseDEF', label: 'Defensa', icon: Shield, color: 'text-amber-400', bg: 'bg-amber-500/20' },
+  { key: 'basePHY', label: 'Físico', icon: Heart, color: 'text-teal-400', bg: 'bg-teal-500/20' },
+] as const
+
+function getLevel(totalPoints: number) {
+  if (totalPoints >= 1000) return { name: 'Leyenda', icon: '👑', color: 'text-amber-400' }
+  if (totalPoints >= 501) return { name: 'Estrella', icon: '🌟', color: 'text-purple-400' }
+  if (totalPoints >= 301) return { name: 'Profesional', icon: '⭐', color: 'text-sky-400' }
+  if (totalPoints >= 151) return { name: 'Semi-Pro', icon: '🥇', color: 'text-emerald-400' }
+  if (totalPoints >= 51) return { name: 'Amateur', icon: '🥈', color: 'text-zinc-300' }
+  return { name: 'Novato', icon: '🥉', color: 'text-orange-400' }
+}
+
+function RpgStatsCard({ player }: { player: any }) {
+  const router = useRouter()
+  const [allocations, setAllocations] = useState<Record<string, number>>({
+    basePAC: 0, baseSHO: 0, basePAS: 0, baseDRI: 0, baseDEF: 0, basePHY: 0,
+  })
+  const [saving, setSaving] = useState(false)
+
+  const statPoints = player.statPoints || 0
+  const totalAllocated = Object.values(allocations).reduce((a, b) => a + b, 0)
+  const remaining = statPoints - totalAllocated
+
+  const adjust = (key: string, delta: number) => {
+    setAllocations(prev => {
+      const current = prev[key]
+      const newVal = Math.max(0, current + delta)
+      // Verificar tope (99)
+      const currentValue = player[key] || 0
+      if (currentValue + newVal > 99) {
+        toast.error(`${key.replace('base', '')} no puede pasar de 99`)
+        return prev
+      }
+      // Verificar puntos disponibles
+      const newTotal = Object.entries(prev)
+        .filter(([k]) => k !== key)
+        .reduce((a, [, v]) => a + v, 0) + newVal
+      if (newTotal > statPoints) {
+        toast.error('No tienes más puntos disponibles')
+        return prev
+      }
+      return { ...prev, [key]: newVal }
+    })
+  }
+
+  const handleSave = async () => {
+    if (totalAllocated === 0) {
+      toast.error('Asigna al menos 1 punto')
+      return
+    }
+    setSaving(true)
+    try {
+      const res = await fetch('/api/player/stats', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pac: allocations.basePAC,
+          sho: allocations.baseSHO,
+          pas: allocations.basePAS,
+          dri: allocations.baseDRI,
+          def: allocations.baseDEF,
+          phy: allocations.basePHY,
+        }),
+      })
+
+      const contentType = res.headers.get('content-type') || ''
+      if (!contentType.includes('application/json')) {
+        toast.error('Tu sesión expiró.')
+        setTimeout(() => { window.location.href = '/login' }, 1500)
+        return
+      }
+
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || 'Error al asignar puntos')
+      }
+
+      const data = await res.json()
+      toast.success(`${totalAllocated} puntos asignados! ${data.message}`)
+      setAllocations({ basePAC: 0, baseSHO: 0, basePAS: 0, baseDRI: 0, baseDEF: 0, basePHY: 0 })
+      router.refresh()
+    } catch (err: any) {
+      toast.error(err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const level = getLevel(player.totalPointsEarned || 0)
+  const rating = Math.round(
+    (player.basePAC + player.baseSHO + player.basePAS + player.baseDRI + player.baseDEF + player.basePHY) / 6
+  )
+
+  return (
+    <Card className="border-primary/20 bg-gradient-card">
+      <CardContent className="p-5">
+        <h3 className="text-sm font-bold mb-4 flex items-center gap-2">
+          <TrendingUp className="h-4 w-4 text-primary" />
+          Estadísticas RPG
+        </h3>
+
+        {/* Header con rating y nivel */}
+        <div className="grid grid-cols-3 gap-2 mb-4">
+          <div className="p-3 rounded-lg bg-primary/10 text-center">
+            <p className="text-[10px] text-muted-foreground uppercase">Rating</p>
+            <p className="text-2xl font-black text-primary">{rating}</p>
+          </div>
+          <div className="p-3 rounded-lg bg-amber-500/10 text-center">
+            <p className="text-[10px] text-muted-foreground uppercase">Nivel</p>
+            <p className={`text-lg font-bold ${level.color}`}>
+              {level.icon} {level.name}
+            </p>
+          </div>
+          <div className="p-3 rounded-lg bg-orange-500/10 text-center">
+            <p className="text-[10px] text-muted-foreground uppercase">Puntos</p>
+            <p className="text-2xl font-black text-orange-400">{player.totalPointsEarned || 0}</p>
+          </div>
+        </div>
+
+        {/* Racha */}
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          <div className="p-2 rounded-lg bg-card/50 flex items-center gap-2">
+            <Flame className="h-4 w-4 text-orange-400" />
+            <div>
+              <p className="text-[10px] text-muted-foreground">Racha actual</p>
+              <p className="text-sm font-bold">{player.streak || 0} partidos</p>
+            </div>
+          </div>
+          <div className="p-2 rounded-lg bg-card/50 flex items-center gap-2">
+            <Crown className="h-4 w-4 text-amber-400" />
+            <div>
+              <p className="text-[10px] text-muted-foreground">Mejor racha</p>
+              <p className="text-sm font-bold">{player.maxStreak || 0} partidos</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Stats con sliders */}
+        <div className="space-y-2">
+          {STAT_CONFIG.map((stat) => {
+            const Icon = stat.icon
+            const base = player[stat.key] || 0
+            const allocating = allocations[stat.key]
+            const total = base + allocating
+            return (
+              <div key={stat.key} className="p-3 rounded-lg bg-card/30">
+                <div className="flex items-center gap-3">
+                  <div className={`flex h-8 w-8 items-center justify-center rounded-lg shrink-0 ${stat.bg}`}>
+                    <Icon className={`h-4 w-4 ${stat.color}`} />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-medium">{stat.label}</span>
+                      <span className={`text-lg font-bold tabular-nums ${allocating > 0 ? stat.color : ''}`}>
+                        {total}
+                        {allocating > 0 && (
+                          <span className="text-xs text-emerald-400 ml-1">(+{allocating})</span>
+                        )}
+                      </span>
+                    </div>
+                    {/* Barra visual */}
+                    <div className="h-2 bg-muted/30 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full ${stat.bg.replace('/20', '')} transition-all`}
+                        style={{ width: `${Math.min(100, (total / 99) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                  {/* Botones + y - */}
+                  <div className="flex flex-col gap-1 shrink-0">
+                    <button
+                      onClick={() => adjust(stat.key, 1)}
+                      disabled={remaining <= 0 || saving}
+                      className="flex h-6 w-6 items-center justify-center rounded bg-primary/20 text-primary hover:bg-primary/30 disabled:opacity-30 transition-colors"
+                    >
+                      <Plus className="h-3 w-3" />
+                    </button>
+                    <button
+                      onClick={() => adjust(stat.key, -1)}
+                      disabled={allocating === 0 || saving}
+                      className="flex h-6 w-6 items-center justify-center rounded bg-muted/30 text-muted-foreground hover:bg-muted/50 disabled:opacity-30 transition-colors"
+                    >
+                      <Minus className="h-3 w-3" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Footer con puntos disponibles y botón asignar */}
+        <div className="mt-4 pt-4 border-t border-white/5 flex items-center justify-between">
+          <div>
+            <p className="text-xs text-muted-foreground">Puntos disponibles</p>
+            <p className="text-2xl font-black text-primary">{remaining}</p>
+          </div>
+          <Button
+            onClick={handleSave}
+            disabled={saving || totalAllocated === 0}
+          >
+            {saving ? (
+              <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Asignando…</>
+            ) : (
+              <><Zap className="h-4 w-4 mr-2" />Asignar {totalAllocated} pts</>
+            )}
+          </Button>
+        </div>
+
+        {statPoints === 0 && (
+          <p className="text-xs text-muted-foreground text-center mt-3 italic">
+            💡 Haz check-in en eventos para ganar puntos (1 por entrenamiento, 3 por partido)
+          </p>
+        )}
+      </CardContent>
+    </Card>
   )
 }

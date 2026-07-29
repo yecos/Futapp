@@ -49,6 +49,7 @@ export function DashboardView({ teamName, teamShortName, currentRole, initialDat
   const { data: session } = useSession()
   const [data, setData] = useState<DashboardData | null>(initialData || null)
   const [mounted, setMounted] = useState(false)
+  const [unreadCount, setUnreadCount] = useState(0)
 
   useEffect(() => {
     setMounted(true)
@@ -56,6 +57,8 @@ export function DashboardView({ teamName, teamShortName, currentRole, initialDat
     if (!initialData) {
       fetchDashboardData()
     }
+    // Cargar conteo de notificaciones no leídas
+    fetchUnreadCount()
   }, [])
 
   async function fetchDashboardData() {
@@ -67,6 +70,18 @@ export function DashboardView({ teamName, teamShortName, currentRole, initialDat
       }
     } catch (e) {
       console.error('Error fetching dashboard:', e)
+    }
+  }
+
+  async function fetchUnreadCount() {
+    try {
+      const res = await fetch('/api/notifications?unread=true&limit=1')
+      if (res.ok) {
+        const d = await res.json()
+        setUnreadCount(d.unreadCount || 0)
+      }
+    } catch (e) {
+      // ignore
     }
   }
 
@@ -119,6 +134,18 @@ export function DashboardView({ teamName, teamShortName, currentRole, initialDat
             </div>
             <div className="flex items-center gap-2">
               <span className="hidden sm:inline text-sm font-medium">{userName.split(' ')[0]}</span>
+              <Link
+                href="/notificaciones"
+                className="relative flex h-9 w-9 items-center justify-center rounded-lg bg-card/50 border border-white/5 hover:bg-card text-muted-foreground hover:text-foreground transition-colors"
+                title="Notificaciones"
+              >
+                <Bell className="h-4 w-4" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-5 min-w-5 items-center justify-center px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+              </Link>
               <button
                 onClick={() => signOut({ callbackUrl: '/login' })}
                 className="flex h-9 w-9 items-center justify-center rounded-lg bg-card/50 border border-white/5 hover:bg-card text-muted-foreground hover:text-foreground transition-colors"

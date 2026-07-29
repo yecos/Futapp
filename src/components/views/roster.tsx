@@ -2,11 +2,14 @@
 
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Users, Search } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { ArrowLeft, Users, Search, Plus } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import Link from 'next/link'
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
+import { useSession } from 'next-auth/react'
+import { AddPlayerDialog } from '@/components/players/add-player-dialog'
 
 interface PlayerData {
   id: string
@@ -49,7 +52,11 @@ const POS_COLORS: Record<string, string> = {
 
 export function RosterView({ players }: { players: PlayerData[] }) {
   const router = useRouter()
+  const { data: session } = useSession()
   const [search, setSearch] = useState('')
+  const [showAdd, setShowAdd] = useState(false)
+
+  const canManage = ['ADMIN', 'ENTRENADOR', 'CUERPO_TECNICO'].includes(session?.user?.role || '')
 
   const filtered = useMemo(() => {
     return players.filter(p =>
@@ -69,7 +76,15 @@ export function RosterView({ players }: { players: PlayerData[] }) {
           <Link href="/" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground">
             <ArrowLeft className="h-4 w-4 mr-1" /> Volver
           </Link>
-          <h1 className="text-xl font-bold mt-2">Plantilla</h1>
+          <div className="flex items-center justify-between mt-2">
+            <h1 className="text-xl font-bold">Plantilla</h1>
+            {canManage && (
+              <Button size="sm" onClick={() => setShowAdd(true)}>
+                <Plus className="h-4 w-4 mr-1" />
+                Agregar jugador
+              </Button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -147,9 +162,20 @@ export function RosterView({ players }: { players: PlayerData[] }) {
           <Card><CardContent className="py-12 text-center text-muted-foreground">
             <Users className="h-10 w-10 mx-auto mb-3 opacity-40" />
             <p>No se encontraron jugadores.</p>
+            {canManage && (
+              <Button size="sm" className="mt-3" onClick={() => setShowAdd(true)}>
+                <Plus className="h-4 w-4 mr-1" /> Agregar jugador
+              </Button>
+            )}
           </CardContent></Card>
         )}
       </main>
+
+      <AddPlayerDialog
+        open={showAdd}
+        onClose={() => setShowAdd(false)}
+        onCreated={() => router.refresh()}
+      />
     </div>
   )
 }

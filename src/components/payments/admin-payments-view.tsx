@@ -12,7 +12,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog'
 import {
-  ArrowLeft, Plus, DollarSign, Clock, CheckCircle2, Upload, AlertCircle, X, Image as ImageIcon,
+  ArrowLeft, Plus, DollarSign, Clock, CheckCircle2, Upload, AlertCircle, X, Image as ImageIcon, Pencil, Trash2, Loader2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -74,7 +74,27 @@ export function AdminPaymentsView({
 }) {
   const [showCreate, setShowCreate] = useState(false)
   const [selectedReceipt, setSelectedReceipt] = useState<Receipt | null>(null)
+  const [editingPayment, setEditingPayment] = useState<Payment | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
+
+  const handleDelete = async (id: string, title: string) => {
+    if (!confirm(`¿Eliminar el cobro "${title}"? Esta acción eliminará también todos los comprobantes asociados.`)) return
+    setDeletingId(id)
+    try {
+      const res = await fetch(`/api/payments/${id}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || 'Error al eliminar')
+      }
+      toast.success('Cobro eliminado')
+      setTimeout(() => window.location.reload(), 800)
+    } catch (err: any) {
+      toast.error(err.message)
+    } finally {
+      setDeletingId(null)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -206,15 +226,34 @@ export function AdminPaymentsView({
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <CheckCircle2 className="h-3 w-3 text-emerald-600" />
-                      {verifiedCount} verificados
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-3 w-3 text-amber-600" />
-                      {payment.receipts.filter((r) => r.status === 'PAGADO').length} por revisar
-                    </span>
+                  <div className="flex items-center justify-between gap-2 mt-2">
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                        {verifiedCount} verificados
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3 w-3 text-amber-600" />
+                        {payment.receipts.filter((r) => r.status === 'PAGADO').length} por revisar
+                      </span>
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => setEditingPayment(payment)}
+                        className="p-1.5 rounded text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                        title="Editar cobro"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(payment.id, payment.title)}
+                        disabled={deletingId === payment.id}
+                        className="p-1.5 rounded text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10 transition-colors disabled:opacity-50"
+                        title="Eliminar cobro"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               )
@@ -245,7 +284,159 @@ export function AdminPaymentsView({
           }}
         />
       )}
+
+      {editingPayment && (
+        <EditPaymentDialog
+          payment={editingPayment}
+          onClose={() => setEditingPayment(null)}
+          onSaved={() => {
+            setEditingPayment(null)
+            toast.success('Cobro actualizado')
+            setTimeout(() => window.location.reload(), 800)
+          }}
+        />
+      )}
     </div>
+  )
+}
+
+// =====================================================
+// COMPONENTE: Editar cobro existente
+// =====================================================
+
+function EditPaymentDialog({
+  payment, onClose, onSaved,
+}: {
+  payment: Payment
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const [form, setForm] = useState({
+    title: payment.title,
+    description: payment.description || '',
+    amount: String(payment.amount),
+    dueDate: new Date(payment.dueDate).toISOString().split('T')[0],
+    status: payment.status,
+  })
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!form.title || !form.amount || !form.dueDate) {
+      toast.error('Completa los campos obligatorios')
+      return
+    }
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/payments/${payment.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: form.title,
+          description: form.description || undefined,
+          amount: parseFloat(form.amount),
+          dueDate: form.dueDate,
+          status: form.status,
+        }),
+      })
+
+      const contentType = res.headers.get('content-type') || ''
+      if (!contentType.includes('application/json')) {
+        toast.error('Tu sesión expiró.')
+        setTimeout(() => { window.location.href = '/login' }, 1500)
+        return
+      }
+
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || 'Error al actualizar')
+      }
+
+      onSaved()
+    } catch (err: any) {
+      toast.error(err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Editar cobro</DialogTitle>
+          <DialogDescription>Modifica los datos del cobro</DialogDescription>
+        </DialogHeader>
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <Label>Título *</Label>
+            <Input
+              value={form.title}
+              onChange={(e) => setForm({ ...form, title: e.target.value })}
+              required
+            />
+          </div>
+
+          <div>
+            <Label>Descripción</Label>
+            <Textarea
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              rows={2}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <Label>Monto (COP) *</Label>
+              <Input
+                type="number"
+                min="1"
+                step="any"
+                value={form.amount}
+                onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                required
+              />
+            </div>
+            <div>
+              <Label>Vencimiento *</Label>
+              <Input
+                type="date"
+                value={form.dueDate}
+                onChange={(e) => setForm({ ...form, dueDate: e.target.value })}
+                required
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label>Estado</Label>
+            <select
+              value={form.status}
+              onChange={(e) => setForm({ ...form, status: e.target.value })}
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
+            >
+              <option value="PENDIENTE">Pendiente</option>
+              <option value="PAGADO">Pagado</option>
+              <option value="VERIFICADO">Verificado</option>
+              <option value="RECHAZADO">Rechazado</option>
+              <option value="VENCIDO">Vencido</option>
+            </select>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Pencil className="h-4 w-4 mr-2" />}
+              Guardar cambios
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 
