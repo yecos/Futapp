@@ -71,6 +71,6 @@ export const config = {
     // autenticación con getServerSession y devuelven JSON 401, no redirects.
     // Solo se aplica middleware a páginas (Server Components) que necesitan
     // redirect por flujo de usuario (choose-team, pending, onboarding, etc.)
-    '/((?!api|_next/static|_next/image|favicon.ico|login|invite|pending|onboarding|choose-team|leave-team|auth-error|mi-perfil|public|logo.svg|manifest.json|robots.txt).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|login|invite|pending|onboarding|choose-team|leave-team|auth-error|mi-perfil|public|logo.svg|manifest.json|robots.txt|sw.js|icons).*)',
   ],
 }
