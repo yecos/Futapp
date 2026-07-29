@@ -236,6 +236,7 @@ model Team {
   announcements Announcement[]
   payments      Payment[]
   standings     Standing[]
+  invites       InviteToken[]
 
   @@index([isActive])
 }
@@ -648,6 +649,7 @@ model InviteToken {
   usedAt    DateTime?
   createdAt DateTime @default(now())
 
+  team    Team  @relation(fields: [teamId], references: [id], onDelete: Cascade)
   creator User  @relation(fields: [createdBy], references: [id])
   used   User?  @relation("InviteTokenUsed", fields: [usedBy], references: [id])
 
