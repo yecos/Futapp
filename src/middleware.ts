@@ -2,15 +2,12 @@ import { withAuth } from 'next-auth/middleware'
 import { NextResponse } from 'next/server'
 
 /**
- * Middleware de autenticación multi-tenant.
+ * Middleware de autenticación dual:
+ * - Usuario de equipo: teamId en JWT, flujo choose-team → onboarding → dashboard
+ * - Jugador libre: isFreePlayer en JWT, flujo registro-jugador-libre → mi-carta
  *
- * Flujo:
- * 1. No logueado → /login
- * 2. Logueado sin teamId → /choose-team
- * 3. Logueado con membership PENDIENTE → /pending
- *    PERO puede ir a /choose-team para crear/unirse a otro equipo
- * 4. Logueado con teamId pero onboarding incompleto (admin) → /onboarding
- * 5. Logueado con teamId activo → dashboard
+ * Ambos tipos de usuario pueden coexistir. Un usuario puede ser jugador libre
+ * Y miembro de un equipo al mismo tiempo.
  */
 export default withAuth(
   function middleware(req) {
@@ -21,14 +18,19 @@ export default withAuth(
 
     const isAuthed = !!token.userId
     const hasTeam = !!token.teamId
+    const isFreePlayer = !!token.isFreePlayer
     const isPending = token.membershipStatus === 'PENDIENTE'
 
     // Páginas que el usuario SIEMPRE puede visitar (con sesión)
-    const publicPaths = ['/choose-team', '/login', '/pending', '/onboarding', '/invite', '/leave-team']
+    const publicPaths = [
+      '/choose-team', '/login', '/pending', '/onboarding', '/invite',
+      '/leave-team', '/registro-jugador-libre', '/mi-carta', '/carta',
+      '/test-fisico', '/jugadores-libres',
+    ]
     const isPublicPath = publicPaths.some(p => path.startsWith(p)) || path.startsWith('/api/')
 
-    // Usuario sin team → /choose-team
-    if (isAuthed && !hasTeam && !isPublicPath) {
+    // Usuario sin team y sin perfil de jugador libre → elegir camino
+    if (isAuthed && !hasTeam && !isFreePlayer && !isPublicPath) {
       return NextResponse.redirect(new URL('/choose-team', req.url))
     }
 
@@ -67,10 +69,6 @@ export default withAuth(
 
 export const config = {
   matcher: [
-    // Excluir TODAS las API routes del middleware — las API manejan su propia
-    // autenticación con getServerSession y devuelven JSON 401, no redirects.
-    // Solo se aplica middleware a páginas (Server Components) que necesitan
-    // redirect por flujo de usuario (choose-team, pending, onboarding, etc.)
-    '/((?!api|_next/static|_next/image|favicon.ico|login|invite|pending|onboarding|choose-team|leave-team|auth-error|mi-perfil|public|logo.svg|manifest.json|robots.txt|sw.js|icons).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|login|invite|pending|onboarding|choose-team|leave-team|auth-error|mi-perfil|public|logo.svg|manifest.json|robots.txt|sw.js|icons|carta|registro-jugador-libre|mi-carta|test-fisico|jugadores-libres).*)',
   ],
 }

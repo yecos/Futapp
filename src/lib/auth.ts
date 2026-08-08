@@ -83,6 +83,14 @@ export const authOptions: NextAuthOptions = {
               token.onboardingCompleted = false
             }
           }
+
+          // Verificar si tiene perfil de jugador libre (Fase 2)
+          const freePlayer = await db.freePlayer.findUnique({
+            where: { userId: token.userId as string },
+            select: { id: true },
+          })
+          token.isFreePlayer = !!freePlayer
+          token.freePlayerId = freePlayer?.id || null
         } catch (e: any) {
           console.error('[Auth:jwt] DB error:', e.message)
         }
@@ -98,6 +106,8 @@ export const authOptions: NextAuthOptions = {
         session.user.teamId = (token.teamId as string | null) || null
         session.user.membershipStatus = (token.membershipStatus as string | null) || null
         session.user.onboardingCompleted = token.onboardingCompleted as boolean
+        session.user.isFreePlayer = (token.isFreePlayer as boolean) || false
+        session.user.freePlayerId = (token.freePlayerId as string | null) || null
       }
       return session
     },
@@ -127,6 +137,8 @@ declare module 'next-auth' {
       teamId?: string | null
       membershipStatus: string | null
       onboardingCompleted: boolean
+      isFreePlayer: boolean
+      freePlayerId?: string | null
     }
   }
   interface User {
@@ -143,5 +155,7 @@ declare module 'next-auth/jwt' {
     membershipStatus?: string | null
     onboardingCompleted?: boolean
     lastRefresh?: number
+    isFreePlayer?: boolean
+    freePlayerId?: string | null
   }
 }

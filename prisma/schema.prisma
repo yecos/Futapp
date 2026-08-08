@@ -157,6 +157,7 @@ model User {
   invitesCreated    InviteToken[]
   inviteUsed        InviteToken?     @relation("InviteTokenUsed")
   eventMessages     EventMessage[]
+  freePlayerProfile FreePlayer?
 
   @@index([email])
 }
@@ -654,4 +655,83 @@ model InviteToken {
   used   User?  @relation("InviteTokenUsed", fields: [usedBy], references: [id])
 
   @@index([teamId, expiresAt])
+}
+
+// =====================================================
+// FREE PLAYER (Fase 2 — Jugador libre sin equipo)
+// =====================================================
+
+enum TestType {
+  SALTO_VERTICAL
+  SPRINT_10M
+  SPRINT_20M
+  CAMBIO_DIRECCION
+  TOQUES_BALON
+  ANTROPOMETRIA
+}
+
+enum VerificationStatus {
+  SIN_VERIFICAR
+  VERIFICADO
+  RECHAZADO
+}
+
+model FreePlayer {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  // Datos básicos
+  fullName        String
+  age             Int
+  city            String?
+  zone            String?  // barrio/comuna
+  photoUrl        String?  // base64 o URL
+  // Datos deportivos
+  primaryPosition Position
+  secondaryPosition Position?
+  dominantFoot    Foot     @default(DIESTRO)
+  height          Int?
+  weight          Int?
+  // Carta
+  bio             String?  @db.Text
+  isPublic        Boolean  @default(true)
+  // Stats derivadas de tests (cacheadas)
+  bestVerticalJumpCm  Int?  // mejor salto vertical en cm
+  bestSprint10Sec     Float? // mejor sprint 10m en segundos
+  bestSprint20Sec     Float? // mejor sprint 20m en segundos
+  // Metadata
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  testResults TestResult[]
+
+  @@index([city, zone])
+  @@index([primaryPosition])
+}
+
+model TestResult {
+  id              String             @id @default(cuid())
+  freePlayerId    String
+  type            TestType
+  // Valor medido (unidad depende del tipo)
+  value           Float
+  unit            String             // "cm", "seg", "toques", etc
+  // Video evidencia (base64 o URL)
+  videoUrl        String?            @db.Text
+  // Verificación
+  status          VerificationStatus @default(SIN_VERIFICAR)
+  verifiedAt      DateTime?
+  verifiedBy      String?
+  rejectionReason String?
+  // Metadata del dispositivo en el momento del test
+  deviceInfo      String?
+  gpsLat          Float?
+  gpsLng          Float?
+  recordedAt      DateTime           // momento real de la grabación
+  createdAt       DateTime           @default(now())
+
+  freePlayer FreePlayer @relation(fields: [freePlayerId], references: [id], onDelete: Cascade)
+
+  @@index([freePlayerId, type, createdAt])
+  @@index([type, value])
 }

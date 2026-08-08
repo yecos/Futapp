@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
 import {
-  Shield, Plus, KeyRound, ArrowRight, Loader2, Check, LogOut,
+  Shield, Plus, KeyRound, ArrowRight, Loader2, Check, LogOut, Sparkles,
 } from 'lucide-react'
 import { signOut } from 'next-auth/react'
 import { toast } from 'sonner'
@@ -128,7 +128,7 @@ export function ChooseTeamClient({ userName }: { userName: string }) {
               <div className="text-center mb-6">
                 <h2 className="text-xl font-bold">¿Qué quieres hacer?</h2>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Crea un equipo nuevo o únete a uno existente
+                  Crea un equipo, únete a uno, o regístrate como jugador libre
                 </p>
               </div>
               <div className="space-y-3">
@@ -158,6 +158,21 @@ export function ChooseTeamClient({ userName }: { userName: string }) {
                     <div className="flex-1">
                       <h3 className="font-bold text-sm">Tengo código de invitación</h3>
                       <p className="text-xs text-muted-foreground mt-0.5">Únete a un equipo existente</p>
+                    </div>
+                    <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                  </CardContent>
+                </Card>
+                <Card
+                  className="border-amber-500/30 bg-gradient-to-br from-amber-950/40 to-orange-900/20 card-hover cursor-pointer"
+                  onClick={() => window.location.href = '/registro-jugador-libre'}
+                >
+                  <CardContent className="p-5 flex items-center gap-4">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/20 shrink-0">
+                      <Sparkles className="h-6 w-6 text-amber-400" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-bold text-sm">Soy jugador libre</h3>
+                      <p className="text-xs text-muted-foreground mt-0.5">Crea tu carta y mide tu rendimiento</p>
                     </div>
                     <ArrowRight className="h-4 w-4 text-muted-foreground" />
                   </CardContent>

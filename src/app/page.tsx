@@ -18,7 +18,7 @@ export default async function HomePage() {
     include: { team: true },
   })
 
-  // Si no tiene membership ACTIVO, verificar si tiene PENDIENTE
+  // Si no tiene membership ACTIVO, verificar PENDIENTE o FreePlayer
   if (!membership || !membership.teamId) {
     const pending = await db.teamMembership.findFirst({
       where: {
@@ -30,6 +30,17 @@ export default async function HomePage() {
     if (pending) {
       redirect('/pending')
     }
+
+    // Si tiene perfil de jugador libre → ir a su carta
+    const freePlayer = await db.freePlayer.findUnique({
+      where: { userId: session.user.id },
+      select: { id: true },
+    })
+
+    if (freePlayer) {
+      redirect('/mi-carta')
+    }
+
     redirect('/choose-team')
   }
 
