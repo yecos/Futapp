@@ -116,6 +116,16 @@ export function DashboardView({ teamName, teamShortName, currentRole, initialDat
       { href: '/admin/equipo', icon: Settings, label: 'Configuración', desc: 'Datos del equipo', iconBg: 'bg-zinc-500/20 text-zinc-300' },
       { href: '/admin/pagos', icon: CreditCard, label: 'Gestión Pagos', desc: 'Crear y verificar', iconBg: 'bg-green-500/20 text-green-400' },
       { href: '/admin/miembros', icon: Users, label: 'Miembros', desc: 'Invitar y aprobar', iconBg: 'bg-indigo-500/20 text-indigo-400' },
+      { href: '/admin/cupos', icon: Users, label: 'Cupos', desc: 'Marketplace de jugadores', iconBg: 'bg-amber-500/20 text-amber-400' },
+    )
+  }
+
+  // Si también es jugador libre, agregar accesos directos
+  if (session?.user?.isFreePlayer) {
+    menuItems.unshift(
+      { href: '/mi-carta', icon: Shield, label: 'Mi Carta', desc: 'Carta de jugador libre', iconBg: 'bg-amber-500/20 text-amber-400' },
+      { href: '/marketplace', icon: Trophy, label: 'Marketplace', desc: 'Cupos disponibles', iconBg: 'bg-purple-500/20 text-purple-400' },
+      { href: '/test-fisico', icon: TrendingUp, label: 'Tests Físicos', desc: 'Mide tu rendimiento', iconBg: 'bg-rose-500/20 text-rose-400' },
     )
   }
 
